@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -242,6 +243,23 @@ func (c *client) getList(id string) (*list, *apiError) {
 		return nil, err
 	}
 	return &l, nil
+}
+
+// teamTasksPageSize is the fixed page size of the filtered team tasks
+// endpoint; a full page means more pages may exist.
+const teamTasksPageSize = 100
+
+func (c *client) getTeamTasks(teamID string, assigneeID int64) ([]task, *apiError) {
+	q := url.Values{}
+	q.Set("assignees[]", strconv.FormatInt(assigneeID, 10))
+	q.Set("subtasks", "true")
+	var out struct {
+		Tasks []task `json:"tasks"`
+	}
+	if err := c.do(http.MethodGet, "/team/"+teamID+"/task?"+q.Encode(), nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Tasks, nil
 }
 
 func (c *client) getUser() (*user, *apiError) {

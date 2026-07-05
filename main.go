@@ -14,6 +14,7 @@ const (
 const topHelp = `clickup-axi <command> <subcommand> [flags]
 
 commands:
+  tasks            List your open tasks (assigned to you)
   task view <id>   Show a task with its newest comments
   task edit <id>   Change a task's status (--status "<status>")
   auth login       Store a personal API token (read from stdin)
@@ -40,12 +41,14 @@ func run(args []string, c *client, stdin io.Reader, out io.Writer) int {
 	case "--version", "-v", "version":
 		fmt.Fprintf(out, "clickup-axi %s\n", version)
 		return 0
+	case "tasks":
+		return cmdTasks(args[1:], c, out)
 	case "task":
 		return cmdTask(args[1:], c, out)
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
 	default:
-		writeError(out, fmt.Sprintf("unknown command %q\n  valid: task, auth", args[0]),
+		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, task, auth", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}
@@ -75,6 +78,7 @@ func cmdHome(c *client, out io.Writer) int {
 		}
 	}
 	writeHelp(out,
+		"Run `clickup-axi tasks` for your open tasks",
 		"Run `clickup-axi task view <id>` for a task with its comments",
 		"Run `clickup-axi task edit <id> --status \"<status>\"` to change status")
 	return 0
