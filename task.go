@@ -107,9 +107,19 @@ func cmdTaskView(args []string, c *client, out io.Writer) int {
 	return 0
 }
 
+// displayID is the id shown to the user everywhere. With
+// CLICKUP_AXI_CUSTOM_IDS set the custom id is the workspace's lingua
+// franca, so output and hints reference it instead of the internal id.
+func displayID(t *task) string {
+	if customIDsForced() && t.CustomID != "" {
+		return t.CustomID
+	}
+	return t.ID
+}
+
 func renderTask(out io.Writer, t *task, comments []comment, showComments int, full bool) {
 	fmt.Fprintln(out, "task:")
-	fmt.Fprintf(out, "  id: %s\n", t.ID)
+	fmt.Fprintf(out, "  id: %s\n", displayID(t))
 	fmt.Fprintf(out, "  title: %s\n", t.Name)
 	fmt.Fprintf(out, "  status: %s\n", t.Status.Status)
 	fmt.Fprintf(out, "  list: %s (%s)\n", t.List.Name, t.List.ID)
@@ -136,7 +146,7 @@ func renderTask(out io.Writer, t *task, comments []comment, showComments int, fu
 			shown, cut = truncateRunes(description, descriptionLimit)
 			if cut {
 				shown += fmt.Sprintf("\n... (truncated, %d chars total)", len([]rune(description)))
-				help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for the complete description", t.ID))
+				help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for the complete description", displayID(t)))
 			}
 		}
 		writeBlock(out, "description", shown, "  ")
@@ -170,11 +180,11 @@ func renderTask(out io.Writer, t *task, comments []comment, showComments int, fu
 			fmt.Fprintf(out, "  %s,%s,%s\n", toonCell(cm.User.Username), cm.Date.date(), toonCell(text))
 		}
 		if len(shown) < len(comments) || len(comments) == commentsPageSize {
-			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all fetched comments", t.ID))
+			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all fetched comments", displayID(t)))
 		}
 	}
 
-	help = append(help, fmt.Sprintf("Run `clickup-axi task edit %s --status \"<status>\"` to change status", t.ID))
+	help = append(help, fmt.Sprintf("Run `clickup-axi task edit %s --status \"<status>\"` to change status", displayID(t)))
 	writeHelp(out, help...)
 }
 
@@ -221,7 +231,7 @@ func cmdTaskEdit(args []string, c *client, out io.Writer) int {
 		return renderAPIError(out, err)
 	}
 	if strings.EqualFold(t.Status.Status, status) {
-		fmt.Fprintf(out, "task: %s already has status %q (no-op)\n", t.ID, t.Status.Status)
+		fmt.Fprintf(out, "task: %s already has status %q (no-op)\n", displayID(t), t.Status.Status)
 		return 0
 	}
 	// The fetch above resolved any custom id; mutate via internal id.
@@ -230,13 +240,13 @@ func cmdTaskEdit(args []string, c *client, out io.Writer) int {
 		// with the list's valid statuses for one-turn recovery.
 		if valid := validStatuses(c, t.List.ID); valid != "" {
 			writeError(out, fmt.Sprintf("status %q not accepted for task %s in list %s\n  valid: %s",
-				status, t.ID, t.List.Name, valid),
-				fmt.Sprintf("Run `clickup-axi task edit %s --status \"<status>\"` with one of the valid statuses", t.ID))
+				status, displayID(t), t.List.Name, valid),
+				fmt.Sprintf("Run `clickup-axi task edit %s --status \"<status>\"` with one of the valid statuses", displayID(t)))
 			return 1
 		}
 		return renderAPIError(out, err)
 	}
-	fmt.Fprintf(out, "task: %s status changed: %s -> %s\n", t.ID, t.Status.Status, status)
+	fmt.Fprintf(out, "task: %s status changed: %s -> %s\n", displayID(t), t.Status.Status, status)
 	return 0
 }
 

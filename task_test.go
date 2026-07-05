@@ -18,6 +18,9 @@ type fakeClickUp struct {
 
 func newFakeClickUp(t *testing.T) (*fakeClickUp, *client) {
 	t.Helper()
+	// Isolate the custom-id policy from the host environment; tests
+	// that want forced mode set the variable after calling this.
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "")
 	f := &fakeClickUp{mux: http.NewServeMux()}
 	srv := httptest.NewServer(f.mux)
 	t.Cleanup(srv.Close)
@@ -55,6 +58,7 @@ func (f *fakeClickUp) put(t *testing.T, taskID string, status int, response stri
 
 const taskJSON = `{
 	"id": "abc123",
+	"custom_id": "AIKK-99",
 	"name": "Fix login redirect",
 	"text_content": "After OAuth callback the user lands on a 404.",
 	"status": {"status": "in progress"},

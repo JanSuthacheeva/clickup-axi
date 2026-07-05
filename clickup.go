@@ -97,6 +97,7 @@ type user struct {
 
 type task struct {
 	ID          string `json:"id"`
+	CustomID    string `json:"custom_id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	TextContent string `json:"text_content"`

@@ -101,7 +101,6 @@ func TestTasksUnknownFlagIsUsageError(t *testing.T) {
 }
 
 func TestTasksIDFallsBackToCustomID(t *testing.T) {
-	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "")
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
 	// No handler for the lowercase internal attempt: it 404s, which
@@ -127,8 +126,8 @@ func TestTasksIDFallsBackToCustomID(t *testing.T) {
 }
 
 func TestTasksForcedCustomIDsSkipInternalLookup(t *testing.T) {
-	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
 	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
 	f.me(t, 42, "jan")
 	f.mux.HandleFunc("GET /api/v2/task/hgai-2316", func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("internal-id lookup attempted despite CLICKUP_AXI_CUSTOM_IDS")
@@ -144,8 +143,48 @@ func TestTasksForcedCustomIDsSkipInternalLookup(t *testing.T) {
 	}
 }
 
+func TestForcedCustomIDsAreShownEverywhere(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": [
+			{"id": "86ey1", "custom_id": "ECOM-7", "name": "Zeitstrahl", "status": {"status": "backlog"}, "due_date": null},
+			{"id": "86ey2", "custom_id": null, "name": "No custom id", "status": {"status": "to do"}, "due_date": null}
+		]}`))
+	})
+	f.mux.HandleFunc("GET /api/v2/task/AIKK-99", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(taskJSON))
+	})
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks")
+	if code != 0 {
+		t.Fatalf("list exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "ECOM-7,Zeitstrahl,backlog,") {
+		t.Errorf("list must show the custom id\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "86ey2,No custom id,to do,") {
+		t.Errorf("list must fall back to the internal id when no custom id exists\noutput:\n%s", out)
+	}
+
+	out, code = runCLI(t, c, "tasks", "AIKK-99")
+	if code != 0 {
+		t.Fatalf("detail exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "id: AIKK-99") {
+		t.Errorf("detail view must show the custom id\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "task edit AIKK-99 --status") {
+		t.Errorf("help hints must reference the custom id\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "id: abc123") {
+		t.Errorf("internal id leaked into the id field in forced mode\noutput:\n%s", out)
+	}
+}
+
 func TestTasksIDNotFoundEitherWay(t *testing.T) {
-	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "")
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
 

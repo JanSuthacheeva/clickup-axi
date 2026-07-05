@@ -67,8 +67,9 @@ func cmdTasks(args []string, c *client, out io.Writer) int {
 	}
 	fmt.Fprintf(out, "tasks: %d open tasks assigned to %s%s\n", len(tasks), u.Username, suffix)
 	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
-	for _, t := range tasks {
-		fmt.Fprintf(out, "  %s,%s,%s,%s\n", t.ID, toonCell(t.Name), toonCell(t.Status.Status), t.DueDate.date())
+	for i := range tasks {
+		t := &tasks[i]
+		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), toonCell(t.Name), toonCell(t.Status.Status), t.DueDate.date())
 	}
 	writeHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
 	return 0
