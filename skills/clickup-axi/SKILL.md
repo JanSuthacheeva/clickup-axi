@@ -7,6 +7,12 @@ description: >
   tasks, tickets with ids like HGAI-2316 or ECOM-2254, asks what is on
   their plate, or wants a task looked up, summarized, or moved to
   another status.
+user-invocable: false
+author: Jan Suthacheeva
+metadata:
+  hermes:
+    tags: [clickup, tasks, tickets, project-management, sprint]
+    category: productivity
 ---
 
 # clickup-axi
