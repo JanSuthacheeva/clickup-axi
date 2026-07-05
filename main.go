@@ -20,7 +20,7 @@ commands:
   auth logout      Remove the stored token
 
 auth:
-  echo -n pk_... | clickup-axi auth login   (token: ClickUp Settings -> Apps)
+  clickup-axi auth login   (guides you to a token, hidden paste)
   CLICKUP_TOKEN, when set, takes precedence over the stored token
 
 Run ` + "`clickup-axi task --help`" + ` for flags and examples.`

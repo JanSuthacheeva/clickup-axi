@@ -261,7 +261,7 @@ func renderAPIError(out io.Writer, err *apiError) int {
 	if err.message == errNoAuth {
 		writeError(out, err.message,
 			"Run `clickup-axi auth login` and paste a token from "+tokenURL,
-			"Agents: pipe it (`echo -n pk_... | clickup-axi auth login`) or export CLICKUP_TOKEN")
+			"Agents: `clickup-axi auth login < tokenfile` or export CLICKUP_TOKEN from a secret store")
 		return 1
 	}
 	writeError(out, err.message)

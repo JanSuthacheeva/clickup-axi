@@ -19,16 +19,19 @@ const authHelp = `clickup-axi auth <subcommand>
 subcommands:
   login    Store a personal API token. In a terminal it guides you to
            ` + tokenURL + ` and prompts for a
-           hidden paste; piped stdin is accepted too, so the token
-           never has to appear in process arguments or shell history
+           hidden paste; piped stdin is accepted for scripted use
   logout   Remove the stored token (no-op when none is stored)
 
 examples:
-  clickup-axi auth login                    (interactive paste)
-  echo -n pk_... | clickup-axi auth login   (scripted / agents)
+  clickup-axi auth login                          (interactive hidden paste)
+  clickup-axi auth login < tokenfile              (scripted / agents)
+  pass show clickup | clickup-axi auth login      (from a secret manager)
   clickup-axi auth logout
 
-CLICKUP_TOKEN, when set, takes precedence over the stored token.`
+Never pipe a literal token (echo pk_... | ...): the command line lands
+in shell history and agent transcripts. Pipe from a file or secret
+manager instead. CLICKUP_TOKEN, when set, takes precedence over the
+stored token.`
 
 func cmdAuth(args []string, c *client, stdin io.Reader, out io.Writer) int {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
@@ -67,7 +70,7 @@ func cmdAuthLogin(stdin io.Reader, c *client, out io.Writer) int {
 	if err != nil || token == "" {
 		writeError(out, "auth login needs a token and got none",
 			fmt.Sprintf("Create a token at %s", tokenURL),
-			"Then run `clickup-axi auth login` in a terminal and paste it, or pipe it: `echo -n pk_... | clickup-axi auth login`")
+			"Run `clickup-axi auth login` in a terminal and paste it, or pipe it by reference: `clickup-axi auth login < tokenfile` (never echo a literal token; it lands in shell history)")
 		return 2
 	}
 

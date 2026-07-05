@@ -18,14 +18,17 @@ clickup-axi task edit 86c2x1a --status "in review"
 
 ```sh
 go build -o clickup-axi .
-echo -n pk_... | clickup-axi auth login   # token: ClickUp Settings -> Apps
+./clickup-axi auth login   # guides you to create a token, hidden paste
 ```
 
-`auth login` reads the token from stdin only (never argv), validates it
-against the API, and stores it at `~/.config/clickup-axi/token` (mode 600).
-`auth logout` removes it and is a no-op when already logged out. A
-`CLICKUP_TOKEN` environment variable, when set, takes precedence over the
-stored token.
+`auth login` validates the token against the API and stores it at
+`~/.config/clickup-axi/token` (mode 600). In a terminal it prompts for a
+hidden paste; for scripted use pipe the token by reference
+(`clickup-axi auth login < tokenfile`, or from a secret manager) - never
+echo a literal token, as the command line lands in shell history and agent
+transcripts. `auth logout` removes the stored token and is a no-op when
+already logged out. A `CLICKUP_TOKEN` environment variable, when set, takes
+precedence over the stored token.
 
 Running `clickup-axi` with no arguments shows live state (user, workspaces) instead
 of help text. `clickup-axi task --help` has flags and examples.

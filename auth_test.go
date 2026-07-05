@@ -79,8 +79,11 @@ func TestAuthLoginEmptyStdinIsUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "echo -n pk_... | clickup-axi auth login") {
-		t.Errorf("output missing stdin usage example\noutput:\n%s", out)
+	if !strings.Contains(out, "clickup-axi auth login < tokenfile") {
+		t.Errorf("output missing by-reference stdin example\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "echo -n pk_") || strings.Contains(out, "echo pk_") {
+		t.Errorf("usage help must not model echoing a literal token\noutput:\n%s", out)
 	}
 }
 
