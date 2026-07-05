@@ -31,7 +31,12 @@ already logged out. A `CLICKUP_TOKEN` environment variable, when set, takes
 precedence over the stored token.
 
 Running `clickup-axi` with no arguments shows live state (user, workspaces) instead
-of help text. `clickup-axi task --help` has flags and examples.
+of help text. `clickup-axi tasks --help` has flags and examples.
+
+Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`); an id is
+tried as internal first with a custom-id fallback. Set
+`CLICKUP_AXI_CUSTOM_IDS=1` to always resolve custom ids directly and skip
+the internal attempt.
 
 ## Behavior contract (AXI)
 

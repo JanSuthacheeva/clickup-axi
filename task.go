@@ -72,30 +72,32 @@ func cmdTaskView(args []string, c *client, out io.Writer) int {
 			fmt.Fprintln(out, taskHelp)
 			return 0
 		default:
-			if strings.HasPrefix(args[i], "-") {
-				writeError(out, fmt.Sprintf("unknown flag %q for task view\n  valid: --comments N, --no-comments, --full", args[i]))
+			if strings.HasPrefix(args[i], "--") {
+				writeError(out, fmt.Sprintf("unknown flag %q\n  valid: --comments N, --no-comments, --full", args[i]))
 				return 2
 			}
 			if id != "" {
-				writeError(out, "task view takes exactly one task id")
+				writeError(out, "only one task id is accepted")
 				return 2
 			}
 			id = args[i]
 		}
 	}
 	if id == "" {
-		writeError(out, "task view needs a task id", "Run `clickup-axi task view <id>`")
+		writeError(out, "a task id is needed", "Run `clickup-axi tasks <id>` (internal like 86ey3tx8m or custom like HGAI-2316)")
 		return 2
 	}
 
-	t, err := c.getTask(id)
+	t, err := c.getTaskByID(id)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 
 	var comments []comment
 	if showComments > 0 || full {
-		comments, err = c.getComments(id)
+		// The task fetch already resolved a custom id, so follow-up
+		// calls can use the internal id directly.
+		comments, err = c.getComments(t.ID)
 		if err != nil {
 			return renderAPIError(out, err)
 		}
@@ -134,7 +136,7 @@ func renderTask(out io.Writer, t *task, comments []comment, showComments int, fu
 			shown, cut = truncateRunes(description, descriptionLimit)
 			if cut {
 				shown += fmt.Sprintf("\n... (truncated, %d chars total)", len([]rune(description)))
-				help = append(help, fmt.Sprintf("Run `clickup-axi task view %s --full` for the complete description", t.ID))
+				help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for the complete description", t.ID))
 			}
 		}
 		writeBlock(out, "description", shown, "  ")
@@ -168,7 +170,7 @@ func renderTask(out io.Writer, t *task, comments []comment, showComments int, fu
 			fmt.Fprintf(out, "  %s,%s,%s\n", toonCell(cm.User.Username), cm.Date.date(), toonCell(text))
 		}
 		if len(shown) < len(comments) || len(comments) == commentsPageSize {
-			help = append(help, fmt.Sprintf("Run `clickup-axi task view %s --full` for all fetched comments", t.ID))
+			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all fetched comments", t.ID))
 		}
 	}
 
@@ -214,7 +216,7 @@ func cmdTaskEdit(args []string, c *client, out io.Writer) int {
 		return 2
 	}
 
-	t, err := c.getTask(id)
+	t, err := c.getTaskByID(id)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
@@ -222,7 +224,8 @@ func cmdTaskEdit(args []string, c *client, out io.Writer) int {
 		fmt.Fprintf(out, "task: %s already has status %q (no-op)\n", t.ID, t.Status.Status)
 		return 0
 	}
-	if err := c.setTaskStatus(id, status); err != nil {
+	// The fetch above resolved any custom id; mutate via internal id.
+	if err := c.setTaskStatus(t.ID, status); err != nil {
 		// The only mutation here is a status change, so enrich any rejection
 		// with the list's valid statuses for one-turn recovery.
 		if valid := validStatuses(c, t.List.ID); valid != "" {

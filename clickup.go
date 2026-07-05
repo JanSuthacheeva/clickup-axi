@@ -211,11 +211,78 @@ func translateHTTPError(resp *http.Response) *apiError {
 	return &apiError{status: resp.StatusCode, message: msg}
 }
 
-func (c *client) getTask(id string) (*task, *apiError) {
+// taskRef addresses a task by internal id (86ey3tx8m) or custom id
+// (HGAI-2316); custom ids need the workspace passed along.
+type taskRef struct {
+	id     string
+	custom bool
+	teamID string
+}
+
+// customIDsForced reports whether CLICKUP_AXI_CUSTOM_IDS opts this
+// workspace into custom-id-only resolution, skipping the internal-id
+// attempt entirely.
+func customIDsForced() bool {
+	switch os.Getenv("CLICKUP_AXI_CUSTOM_IDS") {
+	case "", "0", "false":
+		return false
+	}
+	return true
+}
+
+// getTaskByID resolves a user-supplied id. With CLICKUP_AXI_CUSTOM_IDS
+// set it goes straight to custom-id resolution; otherwise it tries the
+// id as an internal one first and falls back to custom when ClickUp
+// does not know it (404, or 401 which ClickUp also returns for ids
+// outside the token's scope).
+func (c *client) getTaskByID(id string) (*task, *apiError) {
+	if customIDsForced() {
+		return c.getTaskByCustomID(id)
+	}
+	t, err := c.getTask(taskRef{id: id})
+	if err == nil {
+		return t, nil
+	}
+	if err.status != http.StatusNotFound && err.status != http.StatusUnauthorized {
+		return nil, err
+	}
+	t, customErr := c.getTaskByCustomID(id)
+	if customErr == nil {
+		return t, nil
+	}
+	if customErr.status == http.StatusNotFound {
+		return nil, &apiError{status: http.StatusNotFound,
+			message: fmt.Sprintf("task %q not found (tried as internal and as custom id)", id)}
+	}
+	return nil, customErr
+}
+
+// getTaskByCustomID resolves ids like HGAI-2316, which ClickUp stores
+// uppercase and only matches with the workspace id attached.
+func (c *client) getTaskByCustomID(id string) (*task, *apiError) {
+	teams, err := c.getTeams()
+	if err != nil {
+		return nil, err
+	}
+	if len(teams) != 1 {
+		return nil, &apiError{message: fmt.Sprintf(
+			"custom task ids like %q need a single workspace to resolve against, but %d are visible", id, len(teams))}
+	}
+	return c.getTask(taskRef{id: strings.ToUpper(id), custom: true, teamID: teams[0].ID})
+}
+
+func (c *client) getTask(ref taskRef) (*task, *apiError) {
+	path := "/task/" + url.PathEscape(ref.id)
+	if ref.custom {
+		q := url.Values{}
+		q.Set("custom_task_ids", "true")
+		q.Set("team_id", ref.teamID)
+		path += "?" + q.Encode()
+	}
 	var t task
-	if err := c.do(http.MethodGet, "/task/"+id, nil, &t); err != nil {
+	if err := c.do(http.MethodGet, path, nil, &t); err != nil {
 		if err.status == http.StatusNotFound {
-			err.message = fmt.Sprintf("task %q not found", id)
+			err.message = fmt.Sprintf("task %q not found", ref.id)
 		}
 		return nil, err
 	}

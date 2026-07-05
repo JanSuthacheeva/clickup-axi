@@ -5,23 +5,33 @@ import (
 	"io"
 )
 
-const tasksHelp = `clickup-axi tasks
+const tasksHelp = `clickup-axi tasks [id] [flags]
 
-Lists your open tasks: everything assigned to you in your workspace,
-including subtasks. No flags.
+Without an id: your open tasks - everything assigned to you in your
+workspace, including subtasks.
+With an id: that task's details and newest comments. Internal ids
+(86ey3tx8m) and custom ids (HGAI-2316) both work: the id is tried as
+internal first, then as custom. Set CLICKUP_AXI_CUSTOM_IDS=1 to skip
+the internal attempt when your workspace always uses custom ids.
 
-example:
-  clickup-axi tasks`
+flags (with an id):
+  --comments N   comments to include (default 3)
+  --no-comments  skip comments
+  --full         complete description and all fetched comments
+
+examples:
+  clickup-axi tasks
+  clickup-axi tasks HGAI-2316
+  clickup-axi tasks 86ey3tx8m --full`
 
 func cmdTasks(args []string, c *client, out io.Writer) int {
-	for _, a := range args {
-		if a == "--help" || a == "-h" {
+	if len(args) > 0 {
+		if args[0] == "--help" || args[0] == "-h" {
 			fmt.Fprintln(out, tasksHelp)
 			return 0
 		}
-		writeError(out, fmt.Sprintf("tasks takes no arguments, got %q", a),
-			"Run `clickup-axi tasks`")
-		return 2
+		// Any argument means a task id (plus detail-view flags).
+		return cmdTaskView(args, c, out)
 	}
 
 	u, err := c.getUser()
@@ -60,6 +70,6 @@ func cmdTasks(args []string, c *client, out io.Writer) int {
 	for _, t := range tasks {
 		fmt.Fprintf(out, "  %s,%s,%s,%s\n", t.ID, toonCell(t.Name), toonCell(t.Status.Status), t.DueDate.date())
 	}
-	writeHelp(out, "Run `clickup-axi task view <id>` for details and comments")
+	writeHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
 	return 0
 }

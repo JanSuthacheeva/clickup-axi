@@ -42,7 +42,7 @@ func TestTasksListsOpenAssignedTasks(t *testing.T) {
 		"tasks[2]{id,title,status,due}:",
 		`86ey1,"Fix login, redirect",in progress,2026-07-06`,
 		"86ey2,QA checkout,to do,",
-		"Run `clickup-axi task view <id>`",
+		"Run `clickup-axi tasks <id>`",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\noutput:\n%s", want, out)
@@ -89,13 +89,71 @@ func TestTasksFullPageHintsAtMore(t *testing.T) {
 	}
 }
 
-func TestTasksRejectsArguments(t *testing.T) {
+func TestTasksUnknownFlagIsUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "tasks", "--mine")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "tasks takes no arguments") {
-		t.Errorf("output missing usage error\noutput:\n%s", out)
+	if !strings.Contains(out, "valid: --comments N, --no-comments, --full") {
+		t.Errorf("usage error does not list valid flags inline\noutput:\n%s", out)
+	}
+}
+
+func TestTasksIDFallsBackToCustomID(t *testing.T) {
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "")
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	// No handler for the lowercase internal attempt: it 404s, which
+	// must trigger the custom-id fallback (uppercased, with params).
+	f.mux.HandleFunc("GET /api/v2/task/HGAI-2316", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("custom_task_ids"); got != "true" {
+			t.Errorf("custom_task_ids = %q, want true", got)
+		}
+		if got := r.URL.Query().Get("team_id"); got != "9018" {
+			t.Errorf("team_id = %q, want 9018", got)
+		}
+		w.Write([]byte(taskJSON))
+	})
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "hgai-2316")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "title: Fix login redirect") {
+		t.Errorf("output missing task detail\noutput:\n%s", out)
+	}
+}
+
+func TestTasksForcedCustomIDsSkipInternalLookup(t *testing.T) {
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/task/hgai-2316", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("internal-id lookup attempted despite CLICKUP_AXI_CUSTOM_IDS")
+	})
+	f.mux.HandleFunc("GET /api/v2/task/HGAI-2316", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(taskJSON))
+	})
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "hgai-2316")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+}
+
+func TestTasksIDNotFoundEitherWay(t *testing.T) {
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "")
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+
+	out, code := runCLI(t, c, "tasks", "NOPE-1")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `task "NOPE-1" not found (tried as internal and as custom id)`) {
+		t.Errorf("output missing combined not-found message\noutput:\n%s", out)
 	}
 }
