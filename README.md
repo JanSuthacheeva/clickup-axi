@@ -7,11 +7,12 @@ contextual next-step hints.
 Deliberately small for now - it covers the two flows agents need most:
 
 ```sh
-# a task by ID, with its newest comments inline (one invocation, two API calls)
-clickup-axi task view 86c2x1a
+# your open tasks, then a task by id with its newest comments inline
+clickup-axi tasks
+clickup-axi tasks 86c2x1a
 
 # change a task's status; an invalid status echoes the list's valid ones
-clickup-axi task edit 86c2x1a --status "in review"
+clickup-axi tasks edit 86c2x1a --status "in review"
 ```
 
 ## Setup

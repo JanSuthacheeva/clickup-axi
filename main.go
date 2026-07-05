@@ -17,7 +17,7 @@ commands:
   tasks            List your open tasks (assigned to you)
   tasks <id>       Show one task with its newest comments
                    (internal id like 86ey3tx8m or custom like HGAI-2316)
-  task edit <id>   Change a task's status (--status "<status>")
+  tasks edit <id>  Change a task's status (--status "<status>")
   auth login       Store a personal API token (read from stdin)
   auth logout      Remove the stored token
 
@@ -25,7 +25,7 @@ auth:
   clickup-axi auth login   (guides you to a token, hidden paste)
   CLICKUP_TOKEN, when set, takes precedence over the stored token
 
-Run ` + "`clickup-axi task --help`" + ` for flags and examples.`
+Run ` + "`clickup-axi tasks --help`" + ` for flags and examples.`
 
 func main() {
 	os.Exit(run(os.Args[1:], newClientFromEnv(), os.Stdin, os.Stdout))
@@ -44,12 +44,10 @@ func run(args []string, c *client, stdin io.Reader, out io.Writer) int {
 		return 0
 	case "tasks":
 		return cmdTasks(args[1:], c, out)
-	case "task":
-		return cmdTask(args[1:], c, out)
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
 	default:
-		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, task, auth", args[0]),
+		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}
@@ -81,7 +79,7 @@ func cmdHome(c *client, out io.Writer) int {
 	writeHelp(out,
 		"Run `clickup-axi tasks` for your open tasks",
 		"Run `clickup-axi tasks <id>` for a task with its comments",
-		"Run `clickup-axi task edit <id> --status \"<status>\"` to change status")
+		"Run `clickup-axi tasks edit <id> --status \"<status>\"` to change status")
 	return 0
 }
 

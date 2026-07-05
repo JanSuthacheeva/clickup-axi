@@ -5,32 +5,40 @@ import (
 	"io"
 )
 
-const tasksHelp = `clickup-axi tasks [id] [flags]
+const tasksHelp = `clickup-axi tasks [id | edit <id>] [flags]
 
-Without an id: your open tasks - everything assigned to you in your
-workspace, including subtasks.
+Without arguments: your open tasks - everything assigned to you in
+your workspace, including subtasks.
 With an id: that task's details and newest comments. Internal ids
 (86ey3tx8m) and custom ids (HGAI-2316) both work: the id is tried as
 internal first, then as custom. Set CLICKUP_AXI_CUSTOM_IDS=1 to skip
 the internal attempt when your workspace always uses custom ids.
 
-flags (with an id):
+view flags (with an id):
   --comments N   comments to include (default 3)
   --no-comments  skip comments
   --full         complete description and all fetched comments
 
+edit <id> (mutations; "edit" is a reserved word, not an id):
+  --status "<status>"  change status; valid statuses are echoed
+                       when the status does not match
+
 examples:
   clickup-axi tasks
   clickup-axi tasks HGAI-2316
-  clickup-axi tasks 86ey3tx8m --full`
+  clickup-axi tasks 86ey3tx8m --full
+  clickup-axi tasks edit HGAI-2316 --status "in review"`
 
 func cmdTasks(args []string, c *client, out io.Writer) int {
 	if len(args) > 0 {
-		if args[0] == "--help" || args[0] == "-h" {
+		switch args[0] {
+		case "--help", "-h":
 			fmt.Fprintln(out, tasksHelp)
 			return 0
+		case "edit":
+			return cmdTaskEdit(args[1:], c, out)
 		}
-		// Any argument means a task id (plus detail-view flags).
+		// Any other argument means a task id (plus detail-view flags).
 		return cmdTaskView(args, c, out)
 	}
 

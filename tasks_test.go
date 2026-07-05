@@ -176,7 +176,7 @@ func TestForcedCustomIDsAreShownEverywhere(t *testing.T) {
 	if !strings.Contains(out, "id: AIKK-99") {
 		t.Errorf("detail view must show the custom id\noutput:\n%s", out)
 	}
-	if !strings.Contains(out, "task edit AIKK-99 --status") {
+	if !strings.Contains(out, "tasks edit AIKK-99 --status") {
 		t.Errorf("help hints must reference the custom id\noutput:\n%s", out)
 	}
 	if strings.Contains(out, "id: abc123") {

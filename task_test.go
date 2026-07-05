@@ -92,7 +92,7 @@ func TestTaskViewIncludesComments(t *testing.T) {
 	f.task(t, "abc123", taskJSON)
 	f.comments(t, "abc123", commentsJSON)
 
-	out, code := runCLI(t, c, "task", "view", "abc123")
+	out, code := runCLI(t, c, "tasks", "abc123")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
@@ -124,7 +124,7 @@ func TestTaskViewTruncatesLongDescription(t *testing.T) {
 		"After OAuth callback the user lands on a 404.", long, 1))
 	f.comments(t, "abc123", `{"comments": []}`)
 
-	out, code := runCLI(t, c, "task", "view", "abc123")
+	out, code := runCLI(t, c, "tasks", "abc123")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
@@ -144,7 +144,7 @@ func TestTaskViewNoCommentsSkipsFetch(t *testing.T) {
 	f.task(t, "abc123", taskJSON)
 	f.comments(t, "abc123", commentsJSON)
 
-	out, code := runCLI(t, c, "task", "view", "abc123", "--no-comments")
+	out, code := runCLI(t, c, "tasks", "abc123", "--no-comments")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
@@ -161,7 +161,7 @@ func TestTaskEditChangesStatus(t *testing.T) {
 	f.task(t, "abc123", taskJSON)
 	f.put(t, "abc123", http.StatusOK, `{}`)
 
-	out, code := runCLI(t, c, "task", "edit", "abc123", "--status", "in review")
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
@@ -178,7 +178,7 @@ func TestTaskEditSameStatusIsNoOp(t *testing.T) {
 	f.task(t, "abc123", taskJSON)
 	// No PUT handler registered: a PUT would 404 and fail the test output.
 
-	out, code := runCLI(t, c, "task", "edit", "abc123", "--status", "In Progress")
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "In Progress")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (idempotent no-op)\noutput:\n%s", code, out)
 	}
@@ -200,7 +200,7 @@ func TestTaskEditInvalidStatusListsValidOnes(t *testing.T) {
 		]}`))
 	})
 
-	out, code := runCLI(t, c, "task", "edit", "abc123", "--status", "qa")
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "qa")
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
 	}
@@ -214,7 +214,7 @@ func TestTaskEditInvalidStatusListsValidOnes(t *testing.T) {
 
 func TestUnknownFlagExitsWithUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
-	out, code := runCLI(t, c, "task", "view", "abc123", "--bogus")
+	out, code := runCLI(t, c, "tasks", "abc123", "--bogus")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
@@ -225,7 +225,7 @@ func TestUnknownFlagExitsWithUsageError(t *testing.T) {
 
 func TestMissingTokenIsStructuredError(t *testing.T) {
 	c := &client{base: "http://127.0.0.1:1", token: "", http: http.DefaultClient}
-	out, code := runCLI(t, c, "task", "view", "abc123")
+	out, code := runCLI(t, c, "tasks", "abc123")
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
 	}

@@ -14,38 +14,6 @@ const (
 	commentsPageSize = 25
 )
 
-const taskHelp = `clickup-axi task <subcommand> [flags]
-
-subcommands:
-  view <id>   Show a task with its newest comments
-              --comments N   comments to include (default 3)
-              --no-comments  skip comments
-              --full         complete description and all fetched comments
-  edit <id>   Modify a task
-              --status "<status>"  change status; valid statuses are
-                                   echoed when the status does not match
-
-examples:
-  clickup-axi task view 86c2x1a
-  clickup-axi task edit 86c2x1a --status "in review"`
-
-func cmdTask(args []string, c *client, out io.Writer) int {
-	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
-		fmt.Fprintln(out, taskHelp)
-		return 0
-	}
-	switch args[0] {
-	case "view":
-		return cmdTaskView(args[1:], c, out)
-	case "edit":
-		return cmdTaskEdit(args[1:], c, out)
-	default:
-		writeError(out, fmt.Sprintf("unknown task subcommand %q\n  valid: view, edit", args[0]),
-			"Run `clickup-axi task --help`")
-		return 2
-	}
-}
-
 func cmdTaskView(args []string, c *client, out io.Writer) int {
 	var id string
 	showComments := 3
@@ -55,7 +23,7 @@ func cmdTaskView(args []string, c *client, out io.Writer) int {
 		case "--comments":
 			i++
 			if i >= len(args) {
-				writeError(out, "--comments needs a number", "Run `clickup-axi task view <id> --comments 5`")
+				writeError(out, "--comments needs a number", "Run `clickup-axi tasks <id> --comments 5`")
 				return 2
 			}
 			n, err := strconv.Atoi(args[i])
@@ -69,7 +37,7 @@ func cmdTaskView(args []string, c *client, out io.Writer) int {
 		case "--full":
 			full = true
 		case "--help", "-h":
-			fmt.Fprintln(out, taskHelp)
+			fmt.Fprintln(out, tasksHelp)
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "--") {
@@ -184,7 +152,7 @@ func renderTask(out io.Writer, t *task, comments []comment, showComments int, fu
 		}
 	}
 
-	help = append(help, fmt.Sprintf("Run `clickup-axi task edit %s --status \"<status>\"` to change status", displayID(t)))
+	help = append(help, fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` to change status", displayID(t)))
 	writeHelp(out, help...)
 }
 
@@ -196,33 +164,33 @@ func cmdTaskEdit(args []string, c *client, out io.Writer) int {
 		case "--status":
 			i++
 			if i >= len(args) {
-				writeError(out, "--status needs a value", "Run `clickup-axi task edit <id> --status \"in review\"`")
+				writeError(out, "--status needs a value", "Run `clickup-axi tasks edit <id> --status \"in review\"`")
 				return 2
 			}
 			status = args[i]
 			statusSet = true
 		case "--help", "-h":
-			fmt.Fprintln(out, taskHelp)
+			fmt.Fprintln(out, tasksHelp)
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "-") {
-				writeError(out, fmt.Sprintf("unknown flag %q for task edit\n  valid: --status", args[i]))
+				writeError(out, fmt.Sprintf("unknown flag %q for tasks edit\n  valid: --status", args[i]))
 				return 2
 			}
 			if id != "" {
-				writeError(out, "task edit takes exactly one task id")
+				writeError(out, "tasks edit takes exactly one task id")
 				return 2
 			}
 			id = args[i]
 		}
 	}
 	if id == "" {
-		writeError(out, "task edit needs a task id", "Run `clickup-axi task edit <id> --status \"<status>\"`")
+		writeError(out, "tasks edit needs a task id", "Run `clickup-axi tasks edit <id> --status \"<status>\"`")
 		return 2
 	}
 	if !statusSet {
-		writeError(out, "task edit needs --status (the only supported change for now)",
-			fmt.Sprintf("Run `clickup-axi task edit %s --status \"<status>\"`", id))
+		writeError(out, "tasks edit needs --status (the only supported change for now)",
+			fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"`", id))
 		return 2
 	}
 
@@ -241,7 +209,7 @@ func cmdTaskEdit(args []string, c *client, out io.Writer) int {
 		if valid := validStatuses(c, t.List.ID); valid != "" {
 			writeError(out, fmt.Sprintf("status %q not accepted for task %s in list %s\n  valid: %s",
 				status, displayID(t), t.List.Name, valid),
-				fmt.Sprintf("Run `clickup-axi task edit %s --status \"<status>\"` with one of the valid statuses", displayID(t)))
+				fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` with one of the valid statuses", displayID(t)))
 			return 1
 		}
 		return renderAPIError(out, err)
