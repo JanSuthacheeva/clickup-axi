@@ -73,8 +73,13 @@ const commentsJSON = `{"comments": [
 
 func runCLI(t *testing.T, c *client, args ...string) (string, int) {
 	t.Helper()
+	return runCLIWithStdin(t, c, "", args...)
+}
+
+func runCLIWithStdin(t *testing.T, c *client, stdin string, args ...string) (string, int) {
+	t.Helper()
 	var buf bytes.Buffer
-	code := run(args, c, &buf)
+	code := run(args, c, strings.NewReader(stdin), &buf)
 	return buf.String(), code
 }
 
@@ -220,11 +225,11 @@ func TestMissingTokenIsStructuredError(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "CLICKUP_TOKEN is not set") {
+	if !strings.Contains(out, errNoAuth) {
 		t.Errorf("output missing token guidance\noutput:\n%s", out)
 	}
-	if !strings.Contains(out, "export CLICKUP_TOKEN=pk_") {
-		t.Errorf("output missing how-to-fix hint\noutput:\n%s", out)
+	if !strings.Contains(out, "auth login") {
+		t.Errorf("output missing auth login hint\noutput:\n%s", out)
 	}
 }
 

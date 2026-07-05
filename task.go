@@ -258,8 +258,10 @@ func usernames(users []user) string {
 }
 
 func renderAPIError(out io.Writer, err *apiError) int {
-	if err.message == "CLICKUP_TOKEN is not set" {
-		writeError(out, err.message, "export CLICKUP_TOKEN=pk_... (find your token in ClickUp under Settings -> Apps)")
+	if err.message == errNoAuth {
+		writeError(out, err.message,
+			"Run `echo -n pk_... | clickup-axi auth login` (token: ClickUp Settings -> Apps)",
+			"Or export CLICKUP_TOKEN=pk_... for this shell only")
 		return 1
 	}
 	writeError(out, err.message)

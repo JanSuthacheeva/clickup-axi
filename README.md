@@ -18,8 +18,14 @@ clickup-axi task edit 86c2x1a --status "in review"
 
 ```sh
 go build -o clickup-axi .
-export CLICKUP_TOKEN=pk_...   # ClickUp: Settings -> Apps
+echo -n pk_... | clickup-axi auth login   # token: ClickUp Settings -> Apps
 ```
+
+`auth login` reads the token from stdin only (never argv), validates it
+against the API, and stores it at `~/.config/clickup-axi/token` (mode 600).
+`auth logout` removes it and is a no-op when already logged out. A
+`CLICKUP_TOKEN` environment variable, when set, takes precedence over the
+stored token.
 
 Running `clickup-axi` with no arguments shows live state (user, workspaces) instead
 of help text. `clickup-axi task --help` has flags and examples.
@@ -30,7 +36,7 @@ of help text. `clickup-axi task --help` has flags and examples.
 - exit codes: 0 success (including idempotent no-ops), 1 error, 2 usage error
 - long descriptions are truncated with a total size hint; `--full` lifts it
 - zero results are stated explicitly, never silent
-- no interactive prompts; the token is read from `CLICKUP_TOKEN` only
+- no interactive prompts; auth is env var or stdin-piped login only
 
 ## Tests
 

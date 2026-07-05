@@ -16,17 +16,20 @@ const topHelp = `clickup-axi <command> <subcommand> [flags]
 commands:
   task view <id>   Show a task with its newest comments
   task edit <id>   Change a task's status (--status "<status>")
+  auth login       Store a personal API token (read from stdin)
+  auth logout      Remove the stored token
 
 auth:
-  export CLICKUP_TOKEN=pk_... (ClickUp: Settings -> Apps)
+  echo -n pk_... | clickup-axi auth login   (token: ClickUp Settings -> Apps)
+  CLICKUP_TOKEN, when set, takes precedence over the stored token
 
 Run ` + "`clickup-axi task --help`" + ` for flags and examples.`
 
 func main() {
-	os.Exit(run(os.Args[1:], newClientFromEnv(), os.Stdout))
+	os.Exit(run(os.Args[1:], newClientFromEnv(), os.Stdin, os.Stdout))
 }
 
-func run(args []string, c *client, out io.Writer) int {
+func run(args []string, c *client, stdin io.Reader, out io.Writer) int {
 	if len(args) == 0 {
 		return cmdHome(c, out)
 	}
@@ -39,8 +42,10 @@ func run(args []string, c *client, out io.Writer) int {
 		return 0
 	case "task":
 		return cmdTask(args[1:], c, out)
+	case "auth":
+		return cmdAuth(args[1:], c, stdin, out)
 	default:
-		writeError(out, fmt.Sprintf("unknown command %q\n  valid: task", args[0]),
+		writeError(out, fmt.Sprintf("unknown command %q\n  valid: task, auth", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}

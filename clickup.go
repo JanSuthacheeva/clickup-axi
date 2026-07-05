@@ -7,12 +7,15 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const defaultBaseURL = "https://api.clickup.com/api/v2"
+
+const errNoAuth = "not authenticated: CLICKUP_TOKEN is not set and no token is stored"
 
 type client struct {
 	base  string
@@ -23,9 +26,34 @@ type client struct {
 func newClientFromEnv() *client {
 	return &client{
 		base:  defaultBaseURL,
-		token: os.Getenv("CLICKUP_TOKEN"),
+		token: resolveToken(),
 		http:  &http.Client{Timeout: 30 * time.Second},
 	}
+}
+
+// resolveToken prefers the CLICKUP_TOKEN environment variable and falls
+// back to the token stored by `clickup-axi auth login`.
+func resolveToken() string {
+	if t := os.Getenv("CLICKUP_TOKEN"); t != "" {
+		return t
+	}
+	path, err := tokenFilePath()
+	if err != nil {
+		return ""
+	}
+	b, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+func tokenFilePath() (string, error) {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "clickup-axi", "token"), nil
 }
 
 // apiError is a translated ClickUp API failure; raw dependency messages
@@ -108,7 +136,7 @@ type team struct {
 
 func (c *client) do(method, path string, body any, out any) *apiError {
 	if c.token == "" {
-		return &apiError{status: 0, message: "CLICKUP_TOKEN is not set"}
+		return &apiError{status: 0, message: errNoAuth}
 	}
 	var reqBody io.Reader
 	if body != nil {
@@ -165,7 +193,7 @@ func (c *client) send(method, path string, body io.Reader) (*http.Response, *api
 func translateHTTPError(resp *http.Response) *apiError {
 	switch resp.StatusCode {
 	case http.StatusUnauthorized:
-		return &apiError{status: resp.StatusCode, message: "CLICKUP_TOKEN was rejected by ClickUp (invalid or expired)"}
+		return &apiError{status: resp.StatusCode, message: "ClickUp rejected the token (invalid or expired)"}
 	case http.StatusNotFound:
 		return &apiError{status: resp.StatusCode, message: "not found"}
 	case http.StatusTooManyRequests:
