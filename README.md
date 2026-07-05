@@ -48,6 +48,20 @@ the internal attempt.
 - no interactive prompts on agent paths; `auth login` prompts for a paste
   only when stdin is a real terminal, and reads piped stdin otherwise
 
+## Claude Code integration
+
+The Agent Skill in `skills/clickup-axi/` teaches agents when and how to
+use this CLI. Install it by symlinking into your personal skills
+directory (and put the binary on PATH):
+
+```sh
+go build -o ~/.local/bin/clickup-axi .
+ln -sfn "$(pwd)/skills/clickup-axi" ~/.claude/skills/clickup-axi
+```
+
+Agents then load the skill on their own when a conversation touches
+ClickUp tasks.
+
 ## Tests
 
 ```sh
