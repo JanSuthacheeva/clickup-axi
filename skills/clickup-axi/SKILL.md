@@ -21,6 +21,21 @@ An agent-ergonomic ClickUp CLI (AXI). Run it directly; every output ends
 with `help[]` next-step suggestions, so follow those rather than
 guessing. `clickup-axi tasks --help` exists as a fallback.
 
+## Install
+
+There are NO pre-built binaries yet - installing requires a Go
+toolchain on the machine. If `clickup-axi` is not on PATH:
+
+```sh
+go install github.com/JanSuthacheeva/clickup-axi@latest
+```
+
+The binary lands in `$(go env GOPATH)/bin` (usually `~/go/bin`); if the
+command is still not found after installing, use that absolute path. If
+Go is not installed, do not improvise an install - tell the user that
+clickup-axi has no pre-built binaries yet and ask them to install Go or
+put `clickup-axi` on PATH themselves.
+
 ## Commands
 
 ```sh

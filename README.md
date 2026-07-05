@@ -22,10 +22,16 @@ clickup-axi tasks edit 86c2x1a --status "in review"
 
 ## Setup
 
+> [!IMPORTANT]
+> There are no pre-built binaries yet, so you need a
+> [Go toolchain](https://go.dev/dl/) installed on your machine.
+
 ```sh
-go build -o clickup-axi .
-./clickup-axi auth login   # guides you to create a token, hidden paste
+go install github.com/JanSuthacheeva/clickup-axi@latest
+clickup-axi auth login     # guides you to create a token, hidden paste
 ```
+
+(or from a checkout: `go build -o clickup-axi .`)
 
 `auth login` validates the token against the API and stores it at
 `~/.config/clickup-axi/token` (mode 600). In a terminal it prompts for a
@@ -62,6 +68,10 @@ use this CLI. Install it with the
 ```sh
 npx skills add JanSuthacheeva/clickup-axi --skill clickup-axi -g
 ```
+
+The installer only copies the skill files, not the binary; the skill's
+Install section tells the agent to `go install` it on first use if it is
+missing.
 
 or from a local checkout, symlink it and put the binary on PATH:
 
