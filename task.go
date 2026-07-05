@@ -260,8 +260,8 @@ func usernames(users []user) string {
 func renderAPIError(out io.Writer, err *apiError) int {
 	if err.message == errNoAuth {
 		writeError(out, err.message,
-			"Run `echo -n pk_... | clickup-axi auth login` (token: ClickUp Settings -> Apps)",
-			"Or export CLICKUP_TOKEN=pk_... for this shell only")
+			"Run `clickup-axi auth login` and paste a token from "+tokenURL,
+			"Agents: pipe it (`echo -n pk_... | clickup-axi auth login`) or export CLICKUP_TOKEN")
 		return 1
 	}
 	writeError(out, err.message)

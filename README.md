@@ -36,7 +36,8 @@ of help text. `clickup-axi task --help` has flags and examples.
 - exit codes: 0 success (including idempotent no-ops), 1 error, 2 usage error
 - long descriptions are truncated with a total size hint; `--full` lifts it
 - zero results are stated explicitly, never silent
-- no interactive prompts; auth is env var or stdin-piped login only
+- no interactive prompts on agent paths; `auth login` prompts for a paste
+  only when stdin is a real terminal, and reads piped stdin otherwise
 
 ## Tests
 

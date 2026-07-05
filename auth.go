@@ -8,17 +8,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"golang.org/x/term"
 )
+
+const tokenURL = "https://app.clickup.com/settings/apps"
 
 const authHelp = `clickup-axi auth <subcommand>
 
 subcommands:
-  login    Store a personal API token; read from stdin only so the
-           token never appears in process arguments or shell history
+  login    Store a personal API token. In a terminal it guides you to
+           ` + tokenURL + ` and prompts for a
+           hidden paste; piped stdin is accepted too, so the token
+           never has to appear in process arguments or shell history
   logout   Remove the stored token (no-op when none is stored)
 
 examples:
-  echo -n pk_... | clickup-axi auth login
+  clickup-axi auth login                    (interactive paste)
+  echo -n pk_... | clickup-axi auth login   (scripted / agents)
   clickup-axi auth logout
 
 CLICKUP_TOKEN, when set, takes precedence over the stored token.`
@@ -40,12 +47,27 @@ func cmdAuth(args []string, c *client, stdin io.Reader, out io.Writer) int {
 	}
 }
 
+// fdReader is satisfied by *os.File and lets login detect a terminal.
+type fdReader interface {
+	Fd() uintptr
+}
+
 func cmdAuthLogin(stdin io.Reader, c *client, out io.Writer) int {
-	raw, err := io.ReadAll(io.LimitReader(stdin, 4096))
+	var raw []byte
+	var err error
+	if f, ok := stdin.(fdReader); ok && term.IsTerminal(int(f.Fd())) {
+		fmt.Fprintf(out, "auth: create a personal API token at %s\n", tokenURL)
+		fmt.Fprint(out, "paste it here (input stays hidden): ")
+		raw, err = term.ReadPassword(int(f.Fd()))
+		fmt.Fprintln(out)
+	} else {
+		raw, err = io.ReadAll(io.LimitReader(stdin, 4096))
+	}
 	token := strings.TrimSpace(string(raw))
 	if err != nil || token == "" {
-		writeError(out, "auth login reads the token from stdin and got nothing",
-			"Run `echo -n pk_... | clickup-axi auth login` (token: ClickUp Settings -> Apps)")
+		writeError(out, "auth login needs a token and got none",
+			fmt.Sprintf("Create a token at %s", tokenURL),
+			"Then run `clickup-axi auth login` in a terminal and paste it, or pipe it: `echo -n pk_... | clickup-axi auth login`")
 		return 2
 	}
 
