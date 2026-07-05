@@ -1,5 +1,10 @@
 # clickup-axi
 
+> [!WARNING]
+> **STILL IN HEAVY DEVELOPMENT.** The command surface, output format, and
+> flags change without notice, and there are no releases yet. Use at your
+> own risk - especially anything that mutates tasks.
+
 A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md) design
 principles: token-efficient output, combined operations, structured errors, and
 contextual next-step hints.
@@ -51,8 +56,14 @@ the internal attempt.
 ## Claude Code integration
 
 The Agent Skill in `skills/clickup-axi/` teaches agents when and how to
-use this CLI. Install it by symlinking into your personal skills
-directory (and put the binary on PATH):
+use this CLI. Install it with the
+[skills](https://skills.sh) installer:
+
+```sh
+npx skills add JanSuthacheeva/clickup-axi --skill clickup-axi -g
+```
+
+or from a local checkout, symlink it and put the binary on PATH:
 
 ```sh
 go build -o ~/.local/bin/clickup-axi .
