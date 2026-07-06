@@ -2,8 +2,8 @@
 
 > [!WARNING]
 > **STILL IN HEAVY DEVELOPMENT.** The command surface, output format, and
-> flags change without notice, and there are no releases yet. Use at your
-> own risk - especially anything that mutates tasks.
+> flags change without notice. Use at your own risk - especially anything
+> that mutates tasks.
 
 A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md) design
 principles: token-efficient output, combined operations, structured errors, and
@@ -22,16 +22,31 @@ clickup-axi tasks edit 86c2x1a --status "in review"
 
 ## Setup
 
-> [!IMPORTANT]
-> There are no pre-built binaries yet, so you need a
-> [Go toolchain](https://go.dev/dl/) installed on your machine.
+Download a pre-built binary from the
+[latest release](https://github.com/JanSuthacheeva/clickup-axi/releases/latest)
+(linux/darwin on amd64/arm64, windows on amd64; verify with the
+`SHA256SUMS` asset):
+
+```sh
+os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+arch="$(uname -m)"; case "$arch" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
+mkdir -p ~/.local/bin
+curl -fsSL -o ~/.local/bin/clickup-axi \
+  "https://github.com/JanSuthacheeva/clickup-axi/releases/latest/download/clickup-axi_${os}_${arch}"
+chmod +x ~/.local/bin/clickup-axi
+```
+
+or, with a [Go toolchain](https://go.dev/dl/) installed:
 
 ```sh
 go install github.com/JanSuthacheeva/clickup-axi@latest
-clickup-axi auth login     # guides you to create a token, hidden paste
 ```
 
-(or from a checkout: `go build -o clickup-axi .`)
+(or from a checkout: `go build -o clickup-axi .`) Then:
+
+```sh
+clickup-axi auth login     # guides you to create a token, hidden paste
+```
 
 `auth login` validates the token against the API and stores it at
 `~/.config/clickup-axi/token` (mode 600). In a terminal it prompts for a
@@ -70,8 +85,8 @@ npx skills add JanSuthacheeva/clickup-axi --skill clickup-axi -g
 ```
 
 The installer only copies the skill files, not the binary; the skill's
-Install section tells the agent to `go install` it on first use if it is
-missing.
+Install section tells the agent to download the release binary on
+first use if it is missing (with `go install` as the fallback).
 
 or from a local checkout, symlink it and put the binary on PATH:
 

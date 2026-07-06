@@ -26,18 +26,25 @@ guessing. `clickup-axi tasks --help` exists as a fallback.
 
 ## Install
 
-There are NO pre-built binaries yet - installing requires a Go
-toolchain on the machine. If `clickup-axi` is not on PATH:
+If `clickup-axi` is not on PATH, download the pre-built binary for
+this platform from the latest GitHub release (no toolchain needed):
 
 ```sh
-go install github.com/JanSuthacheeva/clickup-axi@latest
+os="$(uname -s | tr '[:upper:]' '[:lower:]')"    # linux or darwin
+arch="$(uname -m)"
+case "$arch" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
+mkdir -p ~/.local/bin
+curl -fsSL -o ~/.local/bin/clickup-axi \
+  "https://github.com/JanSuthacheeva/clickup-axi/releases/latest/download/clickup-axi_${os}_${arch}"
+chmod +x ~/.local/bin/clickup-axi
 ```
 
-The binary lands in `$(go env GOPATH)/bin` (usually `~/go/bin`); if the
-command is still not found after installing, use that absolute path. If
-Go is not installed, do not improvise an install - tell the user that
-clickup-axi has no pre-built binaries yet and ask them to install Go or
-put `clickup-axi` on PATH themselves.
+If `~/.local/bin` is not on PATH, invoke the binary by that absolute
+path. On Windows use the `clickup-axi_windows_amd64.exe` release
+asset. With a Go toolchain,
+`go install github.com/JanSuthacheeva/clickup-axi@latest` works as an
+alternative. If the download fails, do not improvise an install - show
+the user the release page URL and ask them to install it themselves.
 
 ## Commands
 
