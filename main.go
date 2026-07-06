@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 const (
@@ -11,21 +12,29 @@ const (
 	description = "Manage ClickUp tasks - an AXI (agent-ergonomic) CLI"
 )
 
-const topHelp = `clickup-axi <command> <subcommand> [flags]
-
-commands:
-  tasks            List your open tasks (assigned to you)
-  tasks <id>       Show one task with its newest comments
-                   (internal id like 86ey3tx8m or custom like HGAI-2316)
-  tasks edit <id>  Change a task's status (--status "<status>")
-  auth login       Store a personal API token (read from stdin)
-  auth logout      Remove the stored token
-
+// topHelp renders the top-level help from the command surface, so the
+// help text and the generated agent skill can never disagree about
+// which commands exist.
+func topHelp() string {
+	var b strings.Builder
+	b.WriteString("clickup-axi <command> <subcommand> [flags]\n\ncommands:\n")
+	for _, c := range surface {
+		if c.usage == "" {
+			continue
+		}
+		fmt.Fprintf(&b, "  %-17s%s\n", c.usage, c.summary)
+		if c.note != "" {
+			fmt.Fprintf(&b, "  %-17s%s\n", "", c.note)
+		}
+	}
+	b.WriteString(`
 auth:
   clickup-axi auth login   (guides you to a token, hidden paste)
   CLICKUP_TOKEN, when set, takes precedence over the stored token
 
-Run ` + "`clickup-axi tasks --help`" + ` for flags and examples.`
+Run ` + "`clickup-axi tasks --help`" + ` for flags and examples.`)
+	return b.String()
+}
 
 func main() {
 	os.Exit(run(os.Args[1:], newClientFromEnv(), os.Stdin, os.Stdout))
@@ -37,7 +46,7 @@ func run(args []string, c *client, stdin io.Reader, out io.Writer) int {
 	}
 	switch args[0] {
 	case "--help", "-h", "help":
-		fmt.Fprintln(out, topHelp)
+		fmt.Fprintln(out, topHelp())
 		return 0
 	case "--version", "-v", "version":
 		fmt.Fprintf(out, "clickup-axi %s\n", version)
@@ -46,8 +55,10 @@ func run(args []string, c *client, stdin io.Reader, out io.Writer) int {
 		return cmdTasks(args[1:], c, out)
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
+	case "skill":
+		return cmdSkill(args[1:], out)
 	default:
-		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth", args[0]),
+		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth, skill", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}
