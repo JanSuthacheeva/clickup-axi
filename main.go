@@ -4,13 +4,26 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 )
 
-const (
-	version     = "0.1.0"
-	description = "Manage ClickUp tasks - an AXI (agent-ergonomic) CLI"
-)
+const description = "Manage ClickUp tasks - an AXI (agent-ergonomic) CLI"
+
+// version is injected by release builds via
+// -ldflags "-X main.version=<tag>". Source builds fall back to the
+// module version that `go install pkg@version` embeds, then to "dev".
+var version string
+
+func versionString() string {
+	if version != "" {
+		return version
+	}
+	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
+		return bi.Main.Version
+	}
+	return "dev"
+}
 
 // topHelp renders the top-level help from the command surface, so the
 // help text and the generated agent skill can never disagree about
@@ -49,7 +62,7 @@ func run(args []string, c *client, stdin io.Reader, out io.Writer) int {
 		fmt.Fprintln(out, topHelp())
 		return 0
 	case "--version", "-v", "version":
-		fmt.Fprintf(out, "clickup-axi %s\n", version)
+		fmt.Fprintf(out, "clickup-axi %s\n", versionString())
 		return 0
 	case "tasks":
 		return cmdTasks(args[1:], c, out)

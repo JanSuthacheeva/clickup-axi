@@ -2,6 +2,20 @@ package main
 
 import "testing"
 
+// TestVersionFallsBackToDev pins the source-build fallback; release
+// binaries override it via -ldflags (asserted by the release workflow
+// building with -X main.version).
+func TestVersionFallsBackToDev(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	out, code := runCLI(t, c, "--version")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if out != "clickup-axi dev\n" {
+		t.Errorf("version output = %q, want %q", out, "clickup-axi dev\n")
+	}
+}
+
 // TestTopHelpGolden pins the exact top-level help output. The help is
 // rendered from the command surface table; this test guarantees that
 // rendering changes are deliberate, never a side effect of table edits.
