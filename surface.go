@@ -3,7 +3,7 @@ package main
 // command is one entry of the CLI's public surface. The table below is
 // the single source of truth for the top-level help and the Commands
 // section of the generated agent skill (skills/clickup-axi/SKILL.md):
-// adding a command here updates both, and TestCommittedSkillFresh plus
+// adding a command here updates both, and TestCommittedSkillIsFresh plus
 // `clickup-axi skill --check` fail until the skill is regenerated.
 type command struct {
 	usage   string // top-level help: usage column ("" = not listed there)
