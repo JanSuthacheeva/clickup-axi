@@ -16,6 +16,7 @@ commands:
   tasks edit <id>  Change a task's status (--status "<status>")
   auth login       Store a personal API token (read from stdin)
   auth logout      Remove the stored token
+  skill            Generate or verify the agent skill (maintainer command)
 
 auth:
   clickup-axi auth login   (guides you to a token, hidden paste)

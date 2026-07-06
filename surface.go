@@ -48,4 +48,8 @@ var surface = []command{
 		usage:   "auth logout",
 		summary: "Remove the stored token",
 	},
+	{
+		usage:   "skill",
+		summary: "Generate or verify the agent skill (maintainer command)",
+	},
 }

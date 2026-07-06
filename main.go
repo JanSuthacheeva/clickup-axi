@@ -55,8 +55,10 @@ func run(args []string, c *client, stdin io.Reader, out io.Writer) int {
 		return cmdTasks(args[1:], c, out)
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
+	case "skill":
+		return cmdSkill(args[1:], out)
 	default:
-		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth", args[0]),
+		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth, skill", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}
