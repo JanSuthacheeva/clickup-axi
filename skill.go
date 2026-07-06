@@ -96,11 +96,13 @@ func cmdSkill(args []string, out io.Writer) int {
 			return 0
 		}
 		if _, err := os.Stat(filepath.Dir(skillPath)); err != nil {
-			writeError(out, filepath.Dir(skillPath)+" was not found - run from a clickup-axi checkout")
+			writeError(out, filepath.Dir(skillPath)+" was not found - run from a clickup-axi checkout",
+				"Run `clickup-axi skill --write` from the repository root to regenerate it")
 			return 1
 		}
 		if err := os.WriteFile(skillPath, []byte(want), 0o644); err != nil {
-			writeError(out, "could not write "+skillPath)
+			writeError(out, "could not write "+skillPath,
+				"Check write permissions for "+skillPath+" and retry `clickup-axi skill --write`")
 			return 1
 		}
 		fmt.Fprintf(out, "skill: wrote %s\n", skillPath)
