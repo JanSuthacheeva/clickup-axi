@@ -21,8 +21,11 @@ first. Every command must keep the contract:
   prompts when stdin is a real terminal)
 - raw ClickUp API errors never leak; translate them
 
-When the command surface changes, update `skills/clickup-axi/SKILL.md`
-and the README in the same commit.
+The agent skill (`skills/clickup-axi/SKILL.md`) is generated - never
+edit it by hand. When the command surface changes, update `surface.go`
+and `skill_template.md`, run `go run . skill --write`, and update the
+README in the same commit. `go test ./...` and CI fail while the
+committed skill is stale.
 
 ## Build, test, verify
 
