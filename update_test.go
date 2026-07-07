@@ -229,6 +229,25 @@ func TestPassiveCheckDisabledSkipsEverything(t *testing.T) {
 	}
 }
 
+func TestNoticeSuppressedOnFailedCommand(t *testing.T) {
+	setVersion(t, "0.1.0")
+	base := newFakeReleases(t, "v9.9.9", nil)
+	_, c := newFakeClickUp(t) // no `me` handler: cmdHome fails
+	up := passiveUpdater(t, base)
+
+	out, code := runCLIWithUpdater(t, c, up, "")
+	if code == 0 {
+		t.Fatalf("expected the command to fail\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "update:") {
+		t.Errorf("update notice leaked onto a failed command:\n%s", out)
+	}
+	// The network check must not have run at all, so no cache is stamped.
+	if _, err := os.Stat(up.cachePath); err == nil {
+		t.Errorf("failed command still performed the network check")
+	}
+}
+
 func TestNoticeSuppressedOnSkillOutput(t *testing.T) {
 	setVersion(t, "0.1.0")
 	base := newFakeReleases(t, "v9.9.9", nil)

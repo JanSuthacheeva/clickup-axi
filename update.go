@@ -209,12 +209,17 @@ func (u *updater) releasePage() string {
 // postCommand runs the best-effort maintenance that follows a normal
 // command. It must never affect the command's output semantics or exit
 // code, and it is skipped entirely under CLICKUP_AXI_NO_UPDATE_CHECK.
-func (u *updater) postCommand(out io.Writer) {
+// The update notice is gated on ok: a failed command (often an offline
+// one) must not pay the network check's latency or append a notice to
+// error output. The skill heal is local and stays useful either way.
+func (u *updater) postCommand(out io.Writer, ok bool) {
 	if u.disabled {
 		return
 	}
 	u.healSkillCopy(out)
-	u.notifyUpdate(out)
+	if ok {
+		u.notifyUpdate(out)
+	}
 }
 
 // healSkillCopy rewrites the installed skill copy when it no longer

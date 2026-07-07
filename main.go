@@ -56,7 +56,7 @@ func main() {
 func run(args []string, c *client, up *updater, stdin io.Reader, out io.Writer) int {
 	code := dispatch(args, c, up, stdin, out)
 	if up != nil && postCommandAllowed(args) {
-		up.postCommand(out)
+		up.postCommand(out, code == 0)
 	}
 	return code
 }
