@@ -320,6 +320,34 @@ func TestSkillCopySymlinkIsUntouched(t *testing.T) {
 	}
 }
 
+// TestNoReleasesYetIsHandled pins the zero-release edge: GitHub then
+// redirects /releases/latest to /releases (no /tag/ segment), which
+// must read as "no release", not as a tag named "releases".
+func TestNoReleasesYetIsHandled(t *testing.T) {
+	setVersion(t, "0.1.0")
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /latest", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/releases", http.StatusFound)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+
+	// Passive path: no notice, cache stamped.
+	up := passiveUpdater(t, srv.URL)
+	out, _ := runCLIWithUpdater(t, c, up, "")
+	if strings.Contains(out, "update:") {
+		t.Errorf("zero-release redirect produced a notice:\n%s", out)
+	}
+
+	// Explicit update: honest error (not a fake network failure), exit 1.
+	out, code := runCLIWithUpdater(t, c, testUpdater(srv.URL, tempExe(t)), "", "update")
+	if code != 1 || !strings.Contains(out, "error: no release has been published yet") {
+		t.Errorf("exit %d\noutput:\n%s", code, out)
+	}
+}
+
 func TestUpdateUnknownFlagIsUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLIWithUpdater(t, c, &updater{}, "", "update", "--force")

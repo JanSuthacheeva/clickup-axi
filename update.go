@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,6 +17,10 @@ import (
 )
 
 const releasesURL = "https://github.com/JanSuthacheeva/clickup-axi/releases"
+
+// errNoRelease means the release server answered but no release has
+// been published yet.
+var errNoRelease = errors.New("no release published yet")
 
 const updateHelp = `clickup-axi update
 
@@ -85,6 +90,11 @@ func (u *updater) latestTag(timeout time.Duration) (string, error) {
 	if resp.StatusCode < 300 || resp.StatusCode >= 400 || loc == "" {
 		return "", fmt.Errorf("no release redirect (status %d)", resp.StatusCode)
 	}
+	// With zero releases GitHub redirects to /releases instead of
+	// /releases/tag/<tag>; only a /tag/ redirect carries a version.
+	if !strings.Contains(loc, "/tag/") {
+		return "", errNoRelease
+	}
 	tag := path.Base(loc)
 	if tag == "" || tag == "." || tag == "/" {
 		return "", fmt.Errorf("release redirect carries no tag")
@@ -144,6 +154,11 @@ func cmdUpdate(args []string, up *updater, out io.Writer) int {
 	}
 
 	tag, err := up.latestTag(10 * time.Second)
+	if errors.Is(err, errNoRelease) {
+		writeError(out, "no release has been published yet",
+			"Check "+up.releasePage()+" and retry once a release exists")
+		return 1
+	}
 	if err != nil {
 		writeError(out, "could not reach the release server",
 			"Check network access and retry `clickup-axi update`")
