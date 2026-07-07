@@ -244,6 +244,82 @@ func TestNoticeSuppressedOnSkillOutput(t *testing.T) {
 	}
 }
 
+// healUpdater points the self-heal at a temp skill copy path.
+func healUpdater(t *testing.T) *updater {
+	t.Helper()
+	return &updater{skillPath: filepath.Join(t.TempDir(), "SKILL.md")}
+}
+
+func TestSkillCopySelfHeals(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	up := healUpdater(t)
+	stale := strings.Replace(generateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
+	if err := os.WriteFile(up.skillPath, []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, code := runCLIWithUpdater(t, c, up, "")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "skill: refreshed "+up.skillPath+" to match this binary") {
+		t.Errorf("heal was not announced\noutput:\n%s", out)
+	}
+	got, _ := os.ReadFile(up.skillPath)
+	if string(got) != generateSkill() {
+		t.Errorf("skill copy was not healed to the embedded content")
+	}
+
+	// A second run must be silent: the copy already matches.
+	out, _ = runCLIWithUpdater(t, c, up, "")
+	if strings.Contains(out, "skill: refreshed") {
+		t.Errorf("heal announced without a rewrite\noutput:\n%s", out)
+	}
+}
+
+func TestSkillCopyWithoutMarkerIsUntouched(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	up := healUpdater(t)
+	foreign := "# my hand-written skill\n"
+	if err := os.WriteFile(up.skillPath, []byte(foreign), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, _ := runCLIWithUpdater(t, c, up, "")
+	if strings.Contains(out, "skill: refreshed") {
+		t.Errorf("foreign file was announced as refreshed\noutput:\n%s", out)
+	}
+	if got, _ := os.ReadFile(up.skillPath); string(got) != foreign {
+		t.Errorf("foreign skill file was overwritten: %q", got)
+	}
+}
+
+func TestSkillCopySymlinkIsUntouched(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	dir := t.TempDir()
+	target := filepath.Join(dir, "checkout-SKILL.md")
+	stale := strings.Replace(generateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
+	if err := os.WriteFile(target, []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "SKILL.md")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	up := &updater{skillPath: link}
+
+	out, _ := runCLIWithUpdater(t, c, up, "")
+	if strings.Contains(out, "skill: refreshed") {
+		t.Errorf("symlinked skill was announced as refreshed\noutput:\n%s", out)
+	}
+	if got, _ := os.ReadFile(target); string(got) != stale {
+		t.Errorf("symlink target was overwritten")
+	}
+}
+
 func TestUpdateUnknownFlagIsUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLIWithUpdater(t, c, &updater{}, "", "update", "--force")
