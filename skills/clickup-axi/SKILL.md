@@ -54,11 +54,20 @@ clickup-axi tasks                          # open tasks assigned to the user
 clickup-axi tasks <id>                     # one task: metadata, description, newest comments
 clickup-axi tasks <id> --full              # complete description and all fetched comments
 clickup-axi tasks edit <id> --status "<status>"
+clickup-axi update                         # self-update to the latest release (only after user consent)
 ```
 
 Task ids may be custom (HGAI-2316, case-insensitive) or internal
 (86ey3tx8m). An invalid status fails with the list's valid statuses
 echoed inline - pick one and retry once.
+
+## Updates
+
+When any output ends with an `update: vX.Y.Z available` line, ask the
+user whether to update now - do not run the update on your own. If
+they agree, run `clickup-axi update`; if they decline, continue the
+task and do not ask again this session. A `skill: refreshed ...` line
+means this skill file was synced to the binary; no action needed.
 
 ## Behavior contract
 

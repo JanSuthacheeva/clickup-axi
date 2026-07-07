@@ -56,6 +56,17 @@ README and skill never go stale. The tag (minus the `v`) is injected
 into `main.version` via ldflags; source builds fall back to the module
 build-info version, then `dev`.
 
+`clickup-axi update` self-replaces the binary from the latest release
+(checksum-verified, atomic rename). A passive once-per-24h check
+(cache: `~/.config/clickup-axi/update-check`, hard 500ms budget,
+silent on failure) appends an `update: vX.Y.Z available` notice to
+command output, and installed skill copies heal from the embedded
+skill after ordinary commands. All of it lives in `update.go`, is
+excluded from byte-exact outputs (`skill`, `update`, `--version`,
+`--help`), never nags dev/pseudo-version builds, and is disabled by
+`CLICKUP_AXI_NO_UPDATE_CHECK=1` (the test fakes pass an inert updater
+instead).
+
 ## Domain notes
 
 - ClickUp API v2, base `https://api.clickup.com/api/v2`, personal token
