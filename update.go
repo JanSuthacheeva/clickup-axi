@@ -191,6 +191,94 @@ func (u *updater) releasePage() string {
 	return u.base + "/latest"
 }
 
+// postCommand runs the best-effort maintenance that follows a normal
+// command. It must never affect the command's output semantics or exit
+// code, and it is skipped entirely under CLICKUP_AXI_NO_UPDATE_CHECK.
+func (u *updater) postCommand(out io.Writer) {
+	if u.disabled {
+		return
+	}
+	u.notifyUpdate(out)
+}
+
+// notifyUpdate appends a one-line notice when a newer release is known.
+// The latest tag is refreshed at most once per 24h with a hard 500ms
+// budget; failures are silent and still stamp the cache so a broken
+// network never causes per-command retries.
+func (u *updater) notifyUpdate(out io.Writer) {
+	if u.cachePath == "" {
+		return
+	}
+	running := strings.TrimPrefix(versionString(), "v")
+	if !isReleaseVersion(running) {
+		return // dev and checkout builds are not "outdated"
+	}
+	tag, fresh := u.cachedTag()
+	if !fresh {
+		var err error
+		tag, err = u.latestTag(500 * time.Millisecond)
+		if err != nil {
+			tag = ""
+		}
+		u.writeCache(tag)
+	}
+	latest := strings.TrimPrefix(tag, "v")
+	if latest == "" || latest == running {
+		return
+	}
+	fmt.Fprintf(out, "update: v%s available (running v%s) - run `clickup-axi update`\n", latest, running)
+}
+
+// cachedTag reads the check cache; fresh reports whether the stamp is
+// younger than 24h (an empty tag with a fresh stamp means the last
+// check failed and should not be retried yet).
+func (u *updater) cachedTag() (tag string, fresh bool) {
+	raw, err := os.ReadFile(u.cachePath)
+	if err != nil {
+		return "", false
+	}
+	fields := strings.Fields(string(raw))
+	if len(fields) == 0 {
+		return "", false
+	}
+	ts, err := time.Parse(time.RFC3339, fields[0])
+	if err != nil || time.Since(ts) > 24*time.Hour {
+		return "", false
+	}
+	if len(fields) > 1 {
+		tag = fields[1]
+	}
+	return tag, true
+}
+
+func (u *updater) writeCache(tag string) {
+	if os.MkdirAll(filepath.Dir(u.cachePath), 0o700) != nil {
+		return
+	}
+	line := time.Now().UTC().Format(time.RFC3339) + " " + tag + "\n"
+	_ = os.WriteFile(u.cachePath, []byte(line), 0o600)
+}
+
+// isReleaseVersion reports whether s looks like a plain release
+// version (X.Y.Z), as opposed to "dev" or a VCS pseudo-version.
+func isReleaseVersion(s string) bool {
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	for _, p := range parts {
+		if p == "" {
+			return false
+		}
+		for _, r := range p {
+			if r < '0' || r > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // replaceExecutable writes the new binary next to the old one (same
 // filesystem) and renames it over the target atomically.
 func replaceExecutable(exePath string, data []byte) error {

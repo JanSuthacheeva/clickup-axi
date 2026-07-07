@@ -142,6 +142,108 @@ func TestUpdateNetworkFailureIsTranslated(t *testing.T) {
 	}
 }
 
+// passiveUpdater points the notice machinery at a temp cache file.
+func passiveUpdater(t *testing.T, base string) *updater {
+	t.Helper()
+	return &updater{
+		base:      base,
+		http:      &http.Client{Timeout: 5 * time.Second},
+		cachePath: filepath.Join(t.TempDir(), "update-check"),
+	}
+}
+
+func TestPassiveCheckNotifiesAndCaches(t *testing.T) {
+	setVersion(t, "0.1.0")
+	base := newFakeReleases(t, "v9.9.9", nil)
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	up := passiveUpdater(t, base)
+
+	out, code := runCLIWithUpdater(t, c, up, "")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	notice := "update: v9.9.9 available (running v0.1.0) - run `clickup-axi update`"
+	if !strings.Contains(out, notice) {
+		t.Errorf("output missing notice %q\noutput:\n%s", notice, out)
+	}
+	cache, err := os.ReadFile(up.cachePath)
+	if err != nil || !strings.Contains(string(cache), "v9.9.9") {
+		t.Errorf("cache = %q, err %v; want the latest tag stamped", cache, err)
+	}
+
+	// Second run within 24h must serve the notice from the cache, not
+	// the network: point the updater at a dead base to prove it.
+	up.base = "http://127.0.0.1:0"
+	out, _ = runCLIWithUpdater(t, c, up, "")
+	if !strings.Contains(out, notice) {
+		t.Errorf("cached notice missing on second run\noutput:\n%s", out)
+	}
+}
+
+func TestPassiveCheckSilentOnFailureAndStampsCache(t *testing.T) {
+	setVersion(t, "0.1.0")
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	up := passiveUpdater(t, "http://127.0.0.1:0") // unreachable
+
+	out, code := runCLIWithUpdater(t, c, up, "")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if strings.Contains(out, "update:") {
+		t.Errorf("failed check leaked into output:\n%s", out)
+	}
+	if _, err := os.Stat(up.cachePath); err != nil {
+		t.Errorf("failed check did not stamp the cache: %v", err)
+	}
+}
+
+func TestPassiveCheckSuppressedForDevBuilds(t *testing.T) {
+	setVersion(t, "") // versionString falls back to dev/pseudo
+	base := newFakeReleases(t, "v9.9.9", nil)
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	up := passiveUpdater(t, base)
+
+	out, _ := runCLIWithUpdater(t, c, up, "")
+	if strings.Contains(out, "update:") {
+		t.Errorf("dev build was nagged to update:\n%s", out)
+	}
+}
+
+func TestPassiveCheckDisabledSkipsEverything(t *testing.T) {
+	setVersion(t, "0.1.0")
+	base := newFakeReleases(t, "v9.9.9", nil)
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	up := passiveUpdater(t, base)
+	up.disabled = true
+
+	out, _ := runCLIWithUpdater(t, c, up, "")
+	if strings.Contains(out, "update:") {
+		t.Errorf("disabled check still notified:\n%s", out)
+	}
+	if _, err := os.Stat(up.cachePath); err == nil {
+		t.Errorf("disabled check still wrote the cache")
+	}
+}
+
+func TestNoticeSuppressedOnSkillOutput(t *testing.T) {
+	setVersion(t, "0.1.0")
+	base := newFakeReleases(t, "v9.9.9", nil)
+	_, c := newFakeClickUp(t)
+	up := passiveUpdater(t, base)
+
+	out, code := runCLIWithUpdater(t, c, up, "", "skill")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if out != generateSkill() {
+		t.Errorf("skill output is no longer byte-exact:\n%s", out)
+	}
+}
+
 func TestUpdateUnknownFlagIsUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLIWithUpdater(t, c, &updater{}, "", "update", "--force")

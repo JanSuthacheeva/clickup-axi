@@ -54,7 +54,25 @@ func main() {
 }
 
 func run(args []string, c *client, up *updater, stdin io.Reader, out io.Writer) int {
-	return dispatch(args, c, up, stdin, out)
+	code := dispatch(args, c, up, stdin, out)
+	if up != nil && postCommandAllowed(args) {
+		up.postCommand(out)
+	}
+	return code
+}
+
+// postCommandAllowed excludes outputs that must stay byte-exact
+// (skill) or are self-referential (update, version, help) from the
+// post-command maintenance lines.
+func postCommandAllowed(args []string) bool {
+	if len(args) == 0 {
+		return true
+	}
+	switch args[0] {
+	case "skill", "update", "--version", "-v", "version", "--help", "-h", "help":
+		return false
+	}
+	return true
 }
 
 func dispatch(args []string, c *client, up *updater, stdin io.Reader, out io.Writer) int {
