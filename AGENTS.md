@@ -44,6 +44,18 @@ gofmt -l . && go vet ./... && go test ./...
   `CLICKUP_TOKEN`. Prefer read-only commands and idempotent no-op edits.
   NEVER echo a token into a command, file in the repo, or transcript.
 
+## Releasing
+
+Pushing a `v*` tag triggers `.github/workflows/release.yml`: it re-runs
+the verify gate (gofmt, vet, test, build, `skill --check`),
+cross-compiles CGO-free binaries for linux/darwin (amd64+arm64) and
+windows/amd64, and publishes them via `gh release create` as raw
+unversioned assets (`clickup-axi_<os>_<arch>`) plus `SHA256SUMS`. Asset
+names stay unversioned so the `releases/latest/download` URLs in the
+README and skill never go stale. The tag (minus the `v`) is injected
+into `main.version` via ldflags; source builds fall back to the module
+build-info version, then `dev`.
+
 ## Domain notes
 
 - ClickUp API v2, base `https://api.clickup.com/api/v2`, personal token
