@@ -30,6 +30,7 @@ commands:
   tasks edit <id>  Change a task's status (--status "<status>")
   auth login       Store a personal API token (read from stdin)
   auth logout      Remove the stored token
+  update           Update the binary to the latest release
   skill            Generate or verify the agent skill (maintainer command)
 
 auth:

@@ -50,10 +50,14 @@ Run ` + "`clickup-axi tasks --help`" + ` for flags and examples.`)
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], newClientFromEnv(), os.Stdin, os.Stdout))
+	os.Exit(run(os.Args[1:], newClientFromEnv(), newUpdaterFromEnv(), os.Stdin, os.Stdout))
 }
 
-func run(args []string, c *client, stdin io.Reader, out io.Writer) int {
+func run(args []string, c *client, up *updater, stdin io.Reader, out io.Writer) int {
+	return dispatch(args, c, up, stdin, out)
+}
+
+func dispatch(args []string, c *client, up *updater, stdin io.Reader, out io.Writer) int {
 	if len(args) == 0 {
 		return cmdHome(c, out)
 	}
@@ -68,10 +72,12 @@ func run(args []string, c *client, stdin io.Reader, out io.Writer) int {
 		return cmdTasks(args[1:], c, out)
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
+	case "update":
+		return cmdUpdate(args[1:], up, out)
 	case "skill":
 		return cmdSkill(args[1:], out)
 	default:
-		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth, skill", args[0]),
+		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth, update, skill", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}

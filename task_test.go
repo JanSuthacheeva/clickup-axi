@@ -82,8 +82,14 @@ func runCLI(t *testing.T, c *client, args ...string) (string, int) {
 
 func runCLIWithStdin(t *testing.T, c *client, stdin string, args ...string) (string, int) {
 	t.Helper()
+	// A zero updater is inert: no cache path, no skill path, no network.
+	return runCLIWithUpdater(t, c, &updater{}, stdin, args...)
+}
+
+func runCLIWithUpdater(t *testing.T, c *client, up *updater, stdin string, args ...string) (string, int) {
+	t.Helper()
 	var buf bytes.Buffer
-	code := run(args, c, strings.NewReader(stdin), &buf)
+	code := run(args, c, up, strings.NewReader(stdin), &buf)
 	return buf.String(), code
 }
 

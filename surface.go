@@ -49,6 +49,12 @@ var surface = []command{
 		summary: "Remove the stored token",
 	},
 	{
+		usage:   "update",
+		summary: "Update the binary to the latest release",
+		skill:   "clickup-axi update",
+		comment: "self-update to the latest release (only after user consent)",
+	},
+	{
 		usage:   "skill",
 		summary: "Generate or verify the agent skill (maintainer command)",
 	},
