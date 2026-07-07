@@ -60,6 +60,20 @@ precedence over the stored token.
 Running `clickup-axi` with no arguments shows live state (user, workspaces) instead
 of help text. `clickup-axi tasks --help` has flags and examples.
 
+## Staying current
+
+`clickup-axi update` replaces the binary in place with the latest
+release (SHA256-verified, atomic; not supported on Windows). At most
+once per day, commands also check for a newer release in the
+background - within a strict 500ms budget, silently skipped on network
+failure - and append a one-line `update: vX.Y.Z available` notice when
+one exists; agents are instructed to relay that as a question rather
+than update on their own. Installed skill copies (e.g.
+`~/.claude/skills/clickup-axi/SKILL.md`) are rewritten from the
+binary's embedded skill whenever they drift, so binary and skill never
+skew; symlinked checkout installs are left alone. Set
+`CLICKUP_AXI_NO_UPDATE_CHECK=1` to disable all of this.
+
 Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`); an id is
 tried as internal first with a custom-id fallback. Set
 `CLICKUP_AXI_CUSTOM_IDS=1` to always resolve custom ids directly and skip
