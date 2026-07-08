@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like everywhere else (internal first, custom fallback); the text is
   validated as non-empty before any API call.
 
+### Changed
+
+- Slimmed the README down to five sections (what it is, skill-only
+  installation, quickstart, environment variables, auto updates); the
+  manual binary install lives in the skill's Install section only.
+
 ### Fixed
 
 - An unknown custom task id no longer reports "ClickUp rejected the
