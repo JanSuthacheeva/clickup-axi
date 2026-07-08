@@ -1,29 +1,21 @@
-package main
+// Package cli is the driving adapter: it turns argv into API calls and
+// renders every result following the AXI output contract. Run is the
+// single entry point; cmd/clickup-axi wires the real dependencies in.
+package cli
 
 import (
 	"fmt"
 	"io"
 	"os"
-	"runtime/debug"
 	"strings"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+	"github.com/JanSuthacheeva/clickup-axi/internal/output"
+	"github.com/JanSuthacheeva/clickup-axi/internal/update"
+	"github.com/JanSuthacheeva/clickup-axi/internal/version"
 )
 
 const description = "Manage ClickUp tasks - an AXI (agent-ergonomic) CLI"
-
-// version is injected by release builds via
-// -ldflags "-X main.version=<tag>". Source builds fall back to the
-// module version that `go install pkg@version` embeds, then to "dev".
-var version string
-
-func versionString() string {
-	if version != "" {
-		return version
-	}
-	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" && bi.Main.Version != "(devel)" {
-		return bi.Main.Version
-	}
-	return "dev"
-}
 
 // topHelp renders the top-level help from the command surface, so the
 // help text and the generated agent skill can never disagree about
@@ -49,14 +41,12 @@ Run ` + "`clickup-axi tasks --help`" + ` for flags and examples.`)
 	return b.String()
 }
 
-func main() {
-	os.Exit(run(os.Args[1:], newClientFromEnv(), newUpdaterFromEnv(), os.Stdin, os.Stdout))
-}
-
-func run(args []string, c *client, up *updater, stdin io.Reader, out io.Writer) int {
+// Run dispatches one command and appends the post-command maintenance
+// lines (update notice, skill heal) where the output contract allows.
+func Run(args []string, c *clickup.Client, up *update.Updater, stdin io.Reader, out io.Writer) int {
 	code := dispatch(args, c, up, stdin, out)
 	if up != nil && postCommandAllowed(args) {
-		up.postCommand(out, code == 0)
+		up.PostCommand(out, code == 0)
 	}
 	return code
 }
@@ -75,7 +65,7 @@ func postCommandAllowed(args []string) bool {
 	return true
 }
 
-func dispatch(args []string, c *client, up *updater, stdin io.Reader, out io.Writer) int {
+func dispatch(args []string, c *clickup.Client, up *update.Updater, stdin io.Reader, out io.Writer) int {
 	if len(args) == 0 {
 		return cmdHome(c, out)
 	}
@@ -84,35 +74,35 @@ func dispatch(args []string, c *client, up *updater, stdin io.Reader, out io.Wri
 		fmt.Fprintln(out, topHelp())
 		return 0
 	case "--version", "-v", "version":
-		fmt.Fprintf(out, "clickup-axi %s\n", versionString())
+		fmt.Fprintf(out, "clickup-axi %s\n", version.String())
 		return 0
 	case "tasks":
 		return cmdTasks(args[1:], c, out)
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
 	case "update":
-		return cmdUpdate(args[1:], up, out)
+		return update.Cmd(args[1:], up, out)
 	case "skill":
 		return cmdSkill(args[1:], out)
 	default:
-		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth, update, skill", args[0]),
+		output.WriteError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth, update, skill", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}
 }
 
 // cmdHome shows live state instead of help text (AXI principle 8).
-func cmdHome(c *client, out io.Writer) int {
-	fmt.Fprintf(out, "bin: %s\n", collapseHome(execPath()))
+func cmdHome(c *clickup.Client, out io.Writer) int {
+	fmt.Fprintf(out, "bin: %s\n", output.CollapseHome(execPath()))
 	fmt.Fprintf(out, "description: %s\n", description)
 
-	u, err := c.getUser()
+	u, err := c.GetUser()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 	fmt.Fprintf(out, "user: %s (id: %d)\n", u.Username, u.ID)
 
-	teams, err := c.getTeams()
+	teams, err := c.GetTeams()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
@@ -121,10 +111,10 @@ func cmdHome(c *client, out io.Writer) int {
 	} else {
 		fmt.Fprintf(out, "workspaces[%d]{id,name}:\n", len(teams))
 		for _, t := range teams {
-			fmt.Fprintf(out, "  %s,%s\n", t.ID, toonCell(t.Name))
+			fmt.Fprintf(out, "  %s,%s\n", t.ID, output.ToonCell(t.Name))
 		}
 	}
-	writeHelp(out,
+	output.WriteHelp(out,
 		"Run `clickup-axi tasks` for your open tasks",
 		"Run `clickup-axi tasks <id>` for a task with its comments",
 		"Run `clickup-axi tasks edit <id> --status \"<status>\"` to change status")

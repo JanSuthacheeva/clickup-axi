@@ -1,4 +1,9 @@
-package main
+// Package update is the driven adapter for GitHub releases: explicit
+// self-update, the passive once-per-24h update notice, and healing of
+// installed skill copies. It never learns how the skill is generated -
+// the CLI injects the rendered content at wiring time, which keeps the
+// import graph acyclic (cli -> update, never back).
+package update
 
 import (
 	"context"
@@ -14,6 +19,9 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/output"
+	"github.com/JanSuthacheeva/clickup-axi/internal/version"
 )
 
 const releasesURL = "https://github.com/JanSuthacheeva/clickup-axi/releases"
@@ -33,36 +41,43 @@ on the next command after an update. Not supported on Windows.
 examples:
   clickup-axi update`
 
-// updater carries everything the update paths need, injected like the
-// ClickUp client so tests can point it at fakes.
-type updater struct {
-	base      string // release page base, e.g. .../releases
-	http      *http.Client
-	exePath   string // running executable ("" = unknown)
-	cachePath string // passive-check cache file ("" = check disabled)
-	skillPath string // installed skill copy to heal ("" = none)
-	disabled  bool   // CLICKUP_AXI_NO_UPDATE_CHECK: no post-command work
+// Updater carries everything the update paths need, injected like the
+// ClickUp client so tests can point it at fakes. The zero value is
+// inert: no cache path, no skill content, no network.
+type Updater struct {
+	Base         string // release page base, e.g. .../releases
+	HTTP         *http.Client
+	ExePath      string // running executable ("" = unknown)
+	CachePath    string // passive-check cache file ("" = check disabled)
+	SkillPath    string // installed skill copy to heal ("" = none)
+	SkillContent string // this binary's rendered skill ("" = no healing)
+	Disabled     bool   // CLICKUP_AXI_NO_UPDATE_CHECK: no post-command work
 }
 
-func newUpdaterFromEnv() *updater {
-	u := &updater{
-		base:     releasesURL,
-		http:     &http.Client{Timeout: 30 * time.Second},
-		disabled: os.Getenv("CLICKUP_AXI_NO_UPDATE_CHECK") != "",
+// NewFromEnv wires the real updater. skillContent is the skill as this
+// binary would generate it, used to heal installed copies.
+func NewFromEnv(skillContent string) *Updater {
+	u := &Updater{
+		Base:         releasesURL,
+		HTTP:         &http.Client{Timeout: 30 * time.Second},
+		SkillContent: skillContent,
+		Disabled:     os.Getenv("CLICKUP_AXI_NO_UPDATE_CHECK") != "",
 	}
 	if p, err := os.Executable(); err == nil {
-		u.exePath = p
+		u.ExePath = p
 	}
 	if dir, err := os.UserConfigDir(); err == nil {
-		u.cachePath = filepath.Join(dir, "clickup-axi", "update-check")
+		u.CachePath = filepath.Join(dir, "clickup-axi", "update-check")
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		u.skillPath = filepath.Join(home, ".claude", "skills", "clickup-axi", "SKILL.md")
+		u.SkillPath = filepath.Join(home, ".claude", "skills", "clickup-axi", "SKILL.md")
 	}
 	return u
 }
 
-func assetName() string {
+// AssetName is the release asset for this platform, exported for tests
+// that fake the release server.
+func AssetName() string {
 	n := "clickup-axi_" + runtime.GOOS + "_" + runtime.GOARCH
 	if runtime.GOOS == "windows" {
 		n += ".exe"
@@ -72,14 +87,14 @@ func assetName() string {
 
 // latestTag resolves the newest release tag from the /latest redirect's
 // Location header - one request, no GitHub API quota.
-func (u *updater) latestTag(timeout time.Duration) (string, error) {
+func (u *Updater) latestTag(timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.base+"/latest", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.Base+"/latest", nil)
 	if err != nil {
 		return "", err
 	}
-	c := *u.http
+	c := *u.HTTP
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := c.Do(req)
 	if err != nil {
@@ -102,8 +117,8 @@ func (u *updater) latestTag(timeout time.Duration) (string, error) {
 	return tag, nil
 }
 
-func (u *updater) download(name string) ([]byte, error) {
-	resp, err := u.http.Get(u.base + "/latest/download/" + name)
+func (u *Updater) download(name string) ([]byte, error) {
+	resp, err := u.HTTP.Get(u.Base + "/latest/download/" + name)
 	if err != nil {
 		return nil, err
 	}
@@ -131,89 +146,90 @@ func checksumOK(sums []byte, asset string, data []byte) bool {
 	return hex.EncodeToString(sum[:]) == want
 }
 
-func cmdUpdate(args []string, up *updater, out io.Writer) int {
+// Cmd is the `clickup-axi update` command handler.
+func Cmd(args []string, up *Updater, out io.Writer) int {
 	for _, a := range args {
 		switch a {
 		case "--help", "-h":
 			fmt.Fprintln(out, updateHelp)
 			return 0
 		default:
-			writeError(out, fmt.Sprintf("unknown argument %q for update\n  valid: none (--help only)", a),
+			output.WriteError(out, fmt.Sprintf("unknown argument %q for update\n  valid: none (--help only)", a),
 				"Run `clickup-axi update` with no flags")
 			return 2
 		}
 	}
 	if runtime.GOOS == "windows" {
-		writeError(out, "self-update cannot replace a running executable on Windows",
-			"Download "+assetName()+" from "+up.releasePage()+" and replace the binary manually")
+		output.WriteError(out, "self-update cannot replace a running executable on Windows",
+			"Download "+AssetName()+" from "+up.releasePage()+" and replace the binary manually")
 		return 1
 	}
-	if up.exePath == "" {
-		writeError(out, "could not locate the running executable")
+	if up.ExePath == "" {
+		output.WriteError(out, "could not locate the running executable")
 		return 1
 	}
 
 	tag, err := up.latestTag(10 * time.Second)
 	if errors.Is(err, errNoRelease) {
-		writeError(out, "no release has been published yet",
+		output.WriteError(out, "no release has been published yet",
 			"Check "+up.releasePage()+" and retry once a release exists")
 		return 1
 	}
 	if err != nil {
-		writeError(out, "could not reach the release server",
+		output.WriteError(out, "could not reach the release server",
 			"Check network access and retry `clickup-axi update`")
 		return 1
 	}
 	latest := strings.TrimPrefix(tag, "v")
-	running := strings.TrimPrefix(versionString(), "v")
+	running := strings.TrimPrefix(version.String(), "v")
 	if running == latest {
 		fmt.Fprintf(out, "update: already at v%s (no-op)\n", latest)
 		return 0
 	}
 
-	asset := assetName()
+	asset := AssetName()
 	bin, err := up.download(asset)
 	if err != nil {
-		writeError(out, "could not download "+asset,
+		output.WriteError(out, "could not download "+asset,
 			"Retry `clickup-axi update`; if it persists, download manually from "+up.releasePage())
 		return 1
 	}
 	sums, err := up.download("SHA256SUMS")
 	if err != nil {
-		writeError(out, "could not download SHA256SUMS",
+		output.WriteError(out, "could not download SHA256SUMS",
 			"Retry `clickup-axi update`; if it persists, download manually from "+up.releasePage())
 		return 1
 	}
 	if !checksumOK(sums, asset, bin) {
-		writeError(out, "checksum mismatch for "+asset+" - existing binary left untouched",
+		output.WriteError(out, "checksum mismatch for "+asset+" - existing binary left untouched",
 			"Retry `clickup-axi update`; if it persists, download manually from "+up.releasePage())
 		return 1
 	}
 
-	if err := replaceExecutable(up.exePath, bin); err != nil {
-		writeError(out, "could not replace "+collapseHome(up.exePath),
+	if err := replaceExecutable(up.ExePath, bin); err != nil {
+		output.WriteError(out, "could not replace "+output.CollapseHome(up.ExePath),
 			"Check write permissions for the binary's directory and retry `clickup-axi update`")
 		return 1
 	}
 	fmt.Fprintf(out, "update: v%s -> v%s\n", running, latest)
-	fmt.Fprintf(out, "  binary: %s (sha256 verified)\n", collapseHome(up.exePath))
+	fmt.Fprintf(out, "  binary: %s (sha256 verified)\n", output.CollapseHome(up.ExePath))
 	fmt.Fprintln(out, "  skill: installed copies refresh on the next command")
-	writeHelp(out, "Run `clickup-axi --version` to confirm the new version")
+	output.WriteHelp(out, "Run `clickup-axi --version` to confirm the new version")
 	return 0
 }
 
-func (u *updater) releasePage() string {
-	return u.base + "/latest"
+func (u *Updater) releasePage() string {
+	return u.Base + "/latest"
 }
 
-// postCommand runs the best-effort maintenance that follows a normal
+// PostCommand runs the best-effort maintenance that follows a normal
 // command. It must never affect the command's output semantics or exit
 // code, and it is skipped entirely under CLICKUP_AXI_NO_UPDATE_CHECK.
 // The update notice is gated on ok: a failed command (often an offline
 // one) must not pay the network check's latency or append a notice to
 // error output. The skill heal is local and stays useful either way.
-func (u *updater) postCommand(out io.Writer, ok bool) {
-	if u.disabled {
+func (u *Updater) PostCommand(out io.Writer, ok bool) {
+	if u.Disabled {
 		return
 	}
 	u.healSkillCopy(out)
@@ -228,37 +244,36 @@ func (u *updater) postCommand(out io.Writer, ok bool) {
 // regular file carrying our generated-by marker is ever touched -
 // symlinked checkout installs belong to git - and a rewrite is always
 // announced, never silent.
-func (u *updater) healSkillCopy(out io.Writer) {
-	if u.skillPath == "" {
+func (u *Updater) healSkillCopy(out io.Writer) {
+	if u.SkillPath == "" || u.SkillContent == "" {
 		return
 	}
-	fi, err := os.Lstat(u.skillPath)
+	fi, err := os.Lstat(u.SkillPath)
 	if err != nil || !fi.Mode().IsRegular() {
 		return
 	}
-	got, err := os.ReadFile(u.skillPath)
+	got, err := os.ReadFile(u.SkillPath)
 	if err != nil || !strings.Contains(string(got), "Generated by `clickup-axi skill --write`") {
 		return
 	}
-	want := generateSkill()
-	if string(got) == want {
+	if string(got) == u.SkillContent {
 		return
 	}
-	if os.WriteFile(u.skillPath, []byte(want), 0o644) != nil {
+	if os.WriteFile(u.SkillPath, []byte(u.SkillContent), 0o644) != nil {
 		return
 	}
-	fmt.Fprintf(out, "skill: refreshed %s to match this binary\n", collapseHome(u.skillPath))
+	fmt.Fprintf(out, "skill: refreshed %s to match this binary\n", output.CollapseHome(u.SkillPath))
 }
 
 // notifyUpdate appends a one-line notice when a newer release is known.
 // The latest tag is refreshed at most once per 24h with a hard 500ms
 // budget; failures are silent and still stamp the cache so a broken
 // network never causes per-command retries.
-func (u *updater) notifyUpdate(out io.Writer) {
-	if u.cachePath == "" {
+func (u *Updater) notifyUpdate(out io.Writer) {
+	if u.CachePath == "" {
 		return
 	}
-	running := strings.TrimPrefix(versionString(), "v")
+	running := strings.TrimPrefix(version.String(), "v")
 	if !isReleaseVersion(running) {
 		return // dev and checkout builds are not "outdated"
 	}
@@ -281,8 +296,8 @@ func (u *updater) notifyUpdate(out io.Writer) {
 // cachedTag reads the check cache; fresh reports whether the stamp is
 // younger than 24h (an empty tag with a fresh stamp means the last
 // check failed and should not be retried yet).
-func (u *updater) cachedTag() (tag string, fresh bool) {
-	raw, err := os.ReadFile(u.cachePath)
+func (u *Updater) cachedTag() (tag string, fresh bool) {
+	raw, err := os.ReadFile(u.CachePath)
 	if err != nil {
 		return "", false
 	}
@@ -300,12 +315,12 @@ func (u *updater) cachedTag() (tag string, fresh bool) {
 	return tag, true
 }
 
-func (u *updater) writeCache(tag string) {
-	if os.MkdirAll(filepath.Dir(u.cachePath), 0o700) != nil {
+func (u *Updater) writeCache(tag string) {
+	if os.MkdirAll(filepath.Dir(u.CachePath), 0o700) != nil {
 		return
 	}
 	line := time.Now().UTC().Format(time.RFC3339) + " " + tag + "\n"
-	_ = os.WriteFile(u.cachePath, []byte(line), 0o600)
+	_ = os.WriteFile(u.CachePath, []byte(line), 0o600)
 }
 
 // isReleaseVersion reports whether s looks like a plain release

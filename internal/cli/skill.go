@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	_ "embed"
@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
 // The agent skill is generated output: skill_template.md carries the
@@ -34,8 +36,8 @@ examples:
   clickup-axi skill --check
   clickup-axi skill --write`
 
-// generateSkill renders the complete SKILL.md content.
-func generateSkill() string {
+// GenerateSkill renders the complete SKILL.md content.
+func GenerateSkill() string {
 	var b strings.Builder
 	for _, c := range surface {
 		if c.skill == "" {
@@ -63,28 +65,28 @@ func cmdSkill(args []string, out io.Writer) int {
 		case "--write":
 			write = true
 		default:
-			writeError(out, fmt.Sprintf("unknown argument %q for skill\n  valid: --check, --write", a),
+			output.WriteError(out, fmt.Sprintf("unknown argument %q for skill\n  valid: --check, --write", a),
 				"Run `clickup-axi skill --help`")
 			return 2
 		}
 	}
 	if check && write {
-		writeError(out, "--check and --write cannot be combined",
+		output.WriteError(out, "--check and --write cannot be combined",
 			"Run `clickup-axi skill --check` or `clickup-axi skill --write`")
 		return 2
 	}
 
-	want := generateSkill()
+	want := GenerateSkill()
 	switch {
 	case check:
 		got, err := os.ReadFile(skillPath)
 		if err != nil {
-			writeError(out, skillPath+" was not found - run from a clickup-axi checkout",
+			output.WriteError(out, skillPath+" was not found - run from a clickup-axi checkout",
 				"Run `clickup-axi skill --write` from the repository root to regenerate it")
 			return 1
 		}
 		if string(got) != want {
-			writeError(out, skillPath+" is stale",
+			output.WriteError(out, skillPath+" is stale",
 				"Run `clickup-axi skill --write` to regenerate it")
 			return 1
 		}
@@ -96,12 +98,12 @@ func cmdSkill(args []string, out io.Writer) int {
 			return 0
 		}
 		if _, err := os.Stat(filepath.Dir(skillPath)); err != nil {
-			writeError(out, filepath.Dir(skillPath)+" was not found - run from a clickup-axi checkout",
+			output.WriteError(out, filepath.Dir(skillPath)+" was not found - run from a clickup-axi checkout",
 				"Run `clickup-axi skill --write` from the repository root to regenerate it")
 			return 1
 		}
 		if err := os.WriteFile(skillPath, []byte(want), 0o644); err != nil {
-			writeError(out, "could not write "+skillPath,
+			output.WriteError(out, "could not write "+skillPath,
 				"Check write permissions for "+skillPath+" and retry `clickup-axi skill --write`")
 			return 1
 		}

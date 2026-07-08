@@ -42,7 +42,7 @@ chmod +x ~/.local/bin/clickup-axi
 If `~/.local/bin` is not on PATH, invoke the binary by that absolute
 path. On Windows use the `clickup-axi_windows_amd64.exe` release
 asset. With a Go toolchain,
-`go install github.com/JanSuthacheeva/clickup-axi@latest` works as an
+`go install github.com/JanSuthacheeva/clickup-axi/cmd/clickup-axi@latest` works as an
 alternative. If the download fails, do not improvise an install - show
 the user the release page URL and ask them to install it themselves.
 

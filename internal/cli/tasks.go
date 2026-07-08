@@ -1,8 +1,11 @@
-package main
+package cli
 
 import (
 	"fmt"
 	"io"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
 const tasksHelp = `clickup-axi tasks [id | edit <id>] [flags]
@@ -29,7 +32,7 @@ examples:
   clickup-axi tasks 86ey3tx8m --full
   clickup-axi tasks edit HGAI-2316 --status "in review"`
 
-func cmdTasks(args []string, c *client, out io.Writer) int {
+func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 	if len(args) > 0 {
 		switch args[0] {
 		case "--help", "-h":
@@ -42,25 +45,25 @@ func cmdTasks(args []string, c *client, out io.Writer) int {
 		return cmdTaskView(args, c, out)
 	}
 
-	u, err := c.getUser()
+	u, err := c.GetUser()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
-	teams, err := c.getTeams()
+	teams, err := c.GetTeams()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 	switch {
 	case len(teams) == 0:
-		writeError(out, "no workspaces are visible to this token")
+		output.WriteError(out, "no workspaces are visible to this token")
 		return 1
 	case len(teams) > 1:
-		writeError(out, fmt.Sprintf("%d workspaces are visible and tasks cannot pick one yet", len(teams)),
+		output.WriteError(out, fmt.Sprintf("%d workspaces are visible and tasks cannot pick one yet", len(teams)),
 			"Run `clickup-axi` to see the workspaces")
 		return 1
 	}
 
-	tasks, err := c.getTeamTasks(teams[0].ID, u.ID)
+	tasks, err := c.GetTeamTasks(teams[0].ID, u.ID)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
@@ -70,15 +73,15 @@ func cmdTasks(args []string, c *client, out io.Writer) int {
 	}
 
 	suffix := ""
-	if len(tasks) == teamTasksPageSize {
+	if len(tasks) == clickup.TeamTasksPageSize {
 		suffix = " (first page; more may exist)"
 	}
 	fmt.Fprintf(out, "tasks: %d open tasks assigned to %s%s\n", len(tasks), u.Username, suffix)
 	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
 	for i := range tasks {
 		t := &tasks[i]
-		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), toonCell(t.Name), toonCell(t.Status.Status), t.DueDate.date())
+		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date())
 	}
-	writeHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
+	output.WriteHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
 	return 0
 }

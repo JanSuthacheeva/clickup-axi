@@ -16,7 +16,7 @@ jobs:
       - name: vet
         run: go vet ./...
       - name: build
-        run: go build -o clickup-axi .
+        run: go build -o clickup-axi ./cmd/clickup-axi
       - name: test
         run: go test ./...
       - name: skill is fresh

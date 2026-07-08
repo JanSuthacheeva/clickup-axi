@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"crypto/sha256"
@@ -11,6 +11,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/update"
+	"github.com/JanSuthacheeva/clickup-axi/internal/version"
 )
 
 // newFakeReleases serves a GitHub-releases-shaped fake: /latest redirects
@@ -45,9 +48,9 @@ func newFakeReleases(t *testing.T, tag string, assets map[string][]byte) string 
 
 func setVersion(t *testing.T, v string) {
 	t.Helper()
-	old := version
-	version = v
-	t.Cleanup(func() { version = old })
+	old := version.Version
+	version.Version = v
+	t.Cleanup(func() { version.Version = old })
 }
 
 // tempExe stands in for the running executable during update tests.
@@ -60,14 +63,14 @@ func tempExe(t *testing.T) string {
 	return p
 }
 
-func testUpdater(base, exePath string) *updater {
-	return &updater{base: base, http: &http.Client{Timeout: 5 * time.Second}, exePath: exePath}
+func testUpdater(base, exePath string) *update.Updater {
+	return &update.Updater{Base: base, HTTP: &http.Client{Timeout: 5 * time.Second}, ExePath: exePath}
 }
 
 func TestUpdateReplacesBinary(t *testing.T) {
 	setVersion(t, "0.1.0")
 	exe := tempExe(t)
-	base := newFakeReleases(t, "v9.9.9", map[string][]byte{assetName(): []byte("new binary")})
+	base := newFakeReleases(t, "v9.9.9", map[string][]byte{update.AssetName(): []byte("new binary")})
 	_, c := newFakeClickUp(t)
 
 	out, code := runCLIWithUpdater(t, c, testUpdater(base, exe), "", "update")
@@ -96,7 +99,7 @@ func TestUpdateReplacesBinary(t *testing.T) {
 func TestUpdateNoOpWhenAlreadyLatest(t *testing.T) {
 	setVersion(t, "9.9.9")
 	exe := tempExe(t)
-	base := newFakeReleases(t, "v9.9.9", map[string][]byte{assetName(): []byte("new binary")})
+	base := newFakeReleases(t, "v9.9.9", map[string][]byte{update.AssetName(): []byte("new binary")})
 	_, c := newFakeClickUp(t)
 
 	out, code := runCLIWithUpdater(t, c, testUpdater(base, exe), "", "update")
@@ -112,8 +115,8 @@ func TestUpdateChecksumMismatchAborts(t *testing.T) {
 	setVersion(t, "0.1.0")
 	exe := tempExe(t)
 	base := newFakeReleases(t, "v9.9.9", map[string][]byte{
-		assetName():  []byte("new binary"),
-		"SHA256SUMS": []byte("deadbeef  " + assetName() + "\n"),
+		update.AssetName(): []byte("new binary"),
+		"SHA256SUMS":       []byte("deadbeef  " + update.AssetName() + "\n"),
 	})
 	_, c := newFakeClickUp(t)
 
@@ -121,7 +124,7 @@ func TestUpdateChecksumMismatchAborts(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "error: checksum mismatch for "+assetName()) {
+	if !strings.Contains(out, "error: checksum mismatch for "+update.AssetName()) {
 		t.Errorf("missing checksum error\noutput:\n%s", out)
 	}
 	if got, _ := os.ReadFile(exe); string(got) != "old binary" {
@@ -143,12 +146,12 @@ func TestUpdateNetworkFailureIsTranslated(t *testing.T) {
 }
 
 // passiveUpdater points the notice machinery at a temp cache file.
-func passiveUpdater(t *testing.T, base string) *updater {
+func passiveUpdater(t *testing.T, base string) *update.Updater {
 	t.Helper()
-	return &updater{
-		base:      base,
-		http:      &http.Client{Timeout: 5 * time.Second},
-		cachePath: filepath.Join(t.TempDir(), "update-check"),
+	return &update.Updater{
+		Base:      base,
+		HTTP:      &http.Client{Timeout: 5 * time.Second},
+		CachePath: filepath.Join(t.TempDir(), "update-check"),
 	}
 }
 
@@ -167,14 +170,14 @@ func TestPassiveCheckNotifiesAndCaches(t *testing.T) {
 	if !strings.Contains(out, notice) {
 		t.Errorf("output missing notice %q\noutput:\n%s", notice, out)
 	}
-	cache, err := os.ReadFile(up.cachePath)
+	cache, err := os.ReadFile(up.CachePath)
 	if err != nil || !strings.Contains(string(cache), "v9.9.9") {
 		t.Errorf("cache = %q, err %v; want the latest tag stamped", cache, err)
 	}
 
 	// Second run within 24h must serve the notice from the cache, not
 	// the network: point the updater at a dead base to prove it.
-	up.base = "http://127.0.0.1:0"
+	up.Base = "http://127.0.0.1:0"
 	out, _ = runCLIWithUpdater(t, c, up, "")
 	if !strings.Contains(out, notice) {
 		t.Errorf("cached notice missing on second run\noutput:\n%s", out)
@@ -194,13 +197,13 @@ func TestPassiveCheckSilentOnFailureAndStampsCache(t *testing.T) {
 	if strings.Contains(out, "update:") {
 		t.Errorf("failed check leaked into output:\n%s", out)
 	}
-	if _, err := os.Stat(up.cachePath); err != nil {
+	if _, err := os.Stat(up.CachePath); err != nil {
 		t.Errorf("failed check did not stamp the cache: %v", err)
 	}
 }
 
 func TestPassiveCheckSuppressedForDevBuilds(t *testing.T) {
-	setVersion(t, "") // versionString falls back to dev/pseudo
+	setVersion(t, "") // version.String falls back to dev/pseudo
 	base := newFakeReleases(t, "v9.9.9", nil)
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
@@ -218,13 +221,13 @@ func TestPassiveCheckDisabledSkipsEverything(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
 	up := passiveUpdater(t, base)
-	up.disabled = true
+	up.Disabled = true
 
 	out, _ := runCLIWithUpdater(t, c, up, "")
 	if strings.Contains(out, "update:") {
 		t.Errorf("disabled check still notified:\n%s", out)
 	}
-	if _, err := os.Stat(up.cachePath); err == nil {
+	if _, err := os.Stat(up.CachePath); err == nil {
 		t.Errorf("disabled check still wrote the cache")
 	}
 }
@@ -243,7 +246,7 @@ func TestNoticeSuppressedOnFailedCommand(t *testing.T) {
 		t.Errorf("update notice leaked onto a failed command:\n%s", out)
 	}
 	// The network check must not have run at all, so no cache is stamped.
-	if _, err := os.Stat(up.cachePath); err == nil {
+	if _, err := os.Stat(up.CachePath); err == nil {
 		t.Errorf("failed command still performed the network check")
 	}
 }
@@ -258,23 +261,23 @@ func TestNoticeSuppressedOnSkillOutput(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if out != generateSkill() {
+	if out != GenerateSkill() {
 		t.Errorf("skill output is no longer byte-exact:\n%s", out)
 	}
 }
 
 // healUpdater points the self-heal at a temp skill copy path.
-func healUpdater(t *testing.T) *updater {
+func healUpdater(t *testing.T) *update.Updater {
 	t.Helper()
-	return &updater{skillPath: filepath.Join(t.TempDir(), "SKILL.md")}
+	return &update.Updater{SkillPath: filepath.Join(t.TempDir(), "SKILL.md"), SkillContent: GenerateSkill()}
 }
 
 func TestSkillCopySelfHeals(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
 	up := healUpdater(t)
-	stale := strings.Replace(generateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
-	if err := os.WriteFile(up.skillPath, []byte(stale), 0o644); err != nil {
+	stale := strings.Replace(GenerateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
+	if err := os.WriteFile(up.SkillPath, []byte(stale), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -282,11 +285,11 @@ func TestSkillCopySelfHeals(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "skill: refreshed "+up.skillPath+" to match this binary") {
+	if !strings.Contains(out, "skill: refreshed "+up.SkillPath+" to match this binary") {
 		t.Errorf("heal was not announced\noutput:\n%s", out)
 	}
-	got, _ := os.ReadFile(up.skillPath)
-	if string(got) != generateSkill() {
+	got, _ := os.ReadFile(up.SkillPath)
+	if string(got) != GenerateSkill() {
 		t.Errorf("skill copy was not healed to the embedded content")
 	}
 
@@ -302,7 +305,7 @@ func TestSkillCopyWithoutMarkerIsUntouched(t *testing.T) {
 	f.me(t, 42, "jan")
 	up := healUpdater(t)
 	foreign := "# my hand-written skill\n"
-	if err := os.WriteFile(up.skillPath, []byte(foreign), 0o644); err != nil {
+	if err := os.WriteFile(up.SkillPath, []byte(foreign), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -310,7 +313,7 @@ func TestSkillCopyWithoutMarkerIsUntouched(t *testing.T) {
 	if strings.Contains(out, "skill: refreshed") {
 		t.Errorf("foreign file was announced as refreshed\noutput:\n%s", out)
 	}
-	if got, _ := os.ReadFile(up.skillPath); string(got) != foreign {
+	if got, _ := os.ReadFile(up.SkillPath); string(got) != foreign {
 		t.Errorf("foreign skill file was overwritten: %q", got)
 	}
 }
@@ -320,7 +323,7 @@ func TestSkillCopySymlinkIsUntouched(t *testing.T) {
 	f.me(t, 42, "jan")
 	dir := t.TempDir()
 	target := filepath.Join(dir, "checkout-SKILL.md")
-	stale := strings.Replace(generateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
+	stale := strings.Replace(GenerateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
 	if err := os.WriteFile(target, []byte(stale), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +331,7 @@ func TestSkillCopySymlinkIsUntouched(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	up := &updater{skillPath: link}
+	up := &update.Updater{SkillPath: link, SkillContent: GenerateSkill()}
 
 	out, _ := runCLIWithUpdater(t, c, up, "")
 	if strings.Contains(out, "skill: refreshed") {
@@ -369,7 +372,7 @@ func TestNoReleasesYetIsHandled(t *testing.T) {
 
 func TestUpdateUnknownFlagIsUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
-	out, code := runCLIWithUpdater(t, c, &updater{}, "", "update", "--force")
+	out, code := runCLIWithUpdater(t, c, &update.Updater{}, "", "update", "--force")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
