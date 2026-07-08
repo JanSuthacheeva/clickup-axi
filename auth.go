@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"golang.org/x/term"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 )
 
 const tokenURL = "https://app.clickup.com/settings/apps"
@@ -33,7 +35,7 @@ in shell history and agent transcripts. Pipe from a file or secret
 manager instead. CLICKUP_TOKEN, when set, takes precedence over the
 stored token.`
 
-func cmdAuth(args []string, c *client, stdin io.Reader, out io.Writer) int {
+func cmdAuth(args []string, c *clickup.Client, stdin io.Reader, out io.Writer) int {
 	if len(args) == 0 || args[0] == "--help" || args[0] == "-h" {
 		fmt.Fprintln(out, authHelp)
 		return 0
@@ -55,7 +57,7 @@ type fdReader interface {
 	Fd() uintptr
 }
 
-func cmdAuthLogin(stdin io.Reader, c *client, out io.Writer) int {
+func cmdAuthLogin(stdin io.Reader, c *clickup.Client, out io.Writer) int {
 	var raw []byte
 	var err error
 	if f, ok := stdin.(fdReader); ok && term.IsTerminal(int(f.Fd())) {
@@ -75,14 +77,13 @@ func cmdAuthLogin(stdin io.Reader, c *client, out io.Writer) int {
 	}
 
 	// Validate before storing so a typo fails loudly now, not on first use.
-	probe := &client{base: c.base, token: token, http: c.http}
-	u, apiErr := probe.getUser()
+	u, apiErr := c.WithToken(token).GetUser()
 	if apiErr != nil {
-		writeError(out, apiErr.message)
+		writeError(out, apiErr.Message)
 		return 1
 	}
 
-	path, err := tokenFilePath()
+	path, err := clickup.TokenFilePath()
 	if err != nil {
 		writeError(out, "could not locate the user config directory")
 		return 1
@@ -106,7 +107,7 @@ func cmdAuthLogin(stdin io.Reader, c *client, out io.Writer) int {
 }
 
 func cmdAuthLogout(out io.Writer) int {
-	path, err := tokenFilePath()
+	path, err := clickup.TokenFilePath()
 	if err != nil {
 		writeError(out, "could not locate the user config directory")
 		return 1

@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 )
 
 func (f *fakeClickUp) me(t *testing.T, id int64, username string) {
@@ -74,7 +76,7 @@ func TestTasksFullPageHintsAtMore(t *testing.T) {
 	f.me(t, 42, "jan")
 	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
 		var rows []string
-		for i := 0; i < teamTasksPageSize; i++ {
+		for i := 0; i < clickup.TeamTasksPageSize; i++ {
 			rows = append(rows, fmt.Sprintf(`{"id": "t%d", "name": "task %d", "status": {"status": "open"}, "due_date": null}`, i, i))
 		}
 		fmt.Fprintf(w, `{"tasks": [%s]}`, strings.Join(rows, ","))

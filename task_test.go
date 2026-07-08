@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 )
 
 type fakeClickUp struct {
@@ -16,7 +18,7 @@ type fakeClickUp struct {
 	commentGET int
 }
 
-func newFakeClickUp(t *testing.T) (*fakeClickUp, *client) {
+func newFakeClickUp(t *testing.T) (*fakeClickUp, *clickup.Client) {
 	t.Helper()
 	// Isolate the custom-id policy from the host environment; tests
 	// that want forced mode set the variable after calling this.
@@ -24,7 +26,7 @@ func newFakeClickUp(t *testing.T) (*fakeClickUp, *client) {
 	f := &fakeClickUp{mux: http.NewServeMux()}
 	srv := httptest.NewServer(f.mux)
 	t.Cleanup(srv.Close)
-	c := &client{base: srv.URL + "/api/v2", token: "pk_test", http: &http.Client{Timeout: 5 * time.Second}}
+	c := clickup.New(srv.URL+"/api/v2", "pk_test", &http.Client{Timeout: 5 * time.Second})
 	return f, c
 }
 
@@ -75,18 +77,18 @@ const commentsJSON = `{"comments": [
 	{"id": "1", "comment_text": "Customer report", "user": {"id": 3, "username": "tom"}, "date": 1782777600000}
 ]}`
 
-func runCLI(t *testing.T, c *client, args ...string) (string, int) {
+func runCLI(t *testing.T, c *clickup.Client, args ...string) (string, int) {
 	t.Helper()
 	return runCLIWithStdin(t, c, "", args...)
 }
 
-func runCLIWithStdin(t *testing.T, c *client, stdin string, args ...string) (string, int) {
+func runCLIWithStdin(t *testing.T, c *clickup.Client, stdin string, args ...string) (string, int) {
 	t.Helper()
 	// A zero updater is inert: no cache path, no skill path, no network.
 	return runCLIWithUpdater(t, c, &updater{}, stdin, args...)
 }
 
-func runCLIWithUpdater(t *testing.T, c *client, up *updater, stdin string, args ...string) (string, int) {
+func runCLIWithUpdater(t *testing.T, c *clickup.Client, up *updater, stdin string, args ...string) (string, int) {
 	t.Helper()
 	var buf bytes.Buffer
 	code := run(args, c, up, strings.NewReader(stdin), &buf)
@@ -230,12 +232,12 @@ func TestUnknownFlagExitsWithUsageError(t *testing.T) {
 }
 
 func TestMissingTokenIsStructuredError(t *testing.T) {
-	c := &client{base: "http://127.0.0.1:1", token: "", http: http.DefaultClient}
+	c := clickup.New("http://127.0.0.1:1", "", http.DefaultClient)
 	out, code := runCLI(t, c, "tasks", "abc123")
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, errNoAuth) {
+	if !strings.Contains(out, clickup.ErrNoAuth) {
 		t.Errorf("output missing token guidance\noutput:\n%s", out)
 	}
 	if !strings.Contains(out, "auth login") {

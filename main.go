@@ -6,6 +6,8 @@ import (
 	"os"
 	"runtime/debug"
 	"strings"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 )
 
 const description = "Manage ClickUp tasks - an AXI (agent-ergonomic) CLI"
@@ -50,10 +52,10 @@ Run ` + "`clickup-axi tasks --help`" + ` for flags and examples.`)
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], newClientFromEnv(), newUpdaterFromEnv(), os.Stdin, os.Stdout))
+	os.Exit(run(os.Args[1:], clickup.NewFromEnv(), newUpdaterFromEnv(), os.Stdin, os.Stdout))
 }
 
-func run(args []string, c *client, up *updater, stdin io.Reader, out io.Writer) int {
+func run(args []string, c *clickup.Client, up *updater, stdin io.Reader, out io.Writer) int {
 	code := dispatch(args, c, up, stdin, out)
 	if up != nil && postCommandAllowed(args) {
 		up.postCommand(out, code == 0)
@@ -75,7 +77,7 @@ func postCommandAllowed(args []string) bool {
 	return true
 }
 
-func dispatch(args []string, c *client, up *updater, stdin io.Reader, out io.Writer) int {
+func dispatch(args []string, c *clickup.Client, up *updater, stdin io.Reader, out io.Writer) int {
 	if len(args) == 0 {
 		return cmdHome(c, out)
 	}
@@ -102,17 +104,17 @@ func dispatch(args []string, c *client, up *updater, stdin io.Reader, out io.Wri
 }
 
 // cmdHome shows live state instead of help text (AXI principle 8).
-func cmdHome(c *client, out io.Writer) int {
+func cmdHome(c *clickup.Client, out io.Writer) int {
 	fmt.Fprintf(out, "bin: %s\n", collapseHome(execPath()))
 	fmt.Fprintf(out, "description: %s\n", description)
 
-	u, err := c.getUser()
+	u, err := c.GetUser()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 	fmt.Fprintf(out, "user: %s (id: %d)\n", u.Username, u.ID)
 
-	teams, err := c.getTeams()
+	teams, err := c.GetTeams()
 	if err != nil {
 		return renderAPIError(out, err)
 	}

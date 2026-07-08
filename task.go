@@ -5,16 +5,16 @@ import (
 	"io"
 	"strconv"
 	"strings"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 )
 
 const (
 	descriptionLimit = 800
 	commentLimit     = 200
-	// The comments endpoint returns at most this many without pagination.
-	commentsPageSize = 25
 )
 
-func cmdTaskView(args []string, c *client, out io.Writer) int {
+func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 	var id string
 	showComments := 3
 	full := false
@@ -56,16 +56,16 @@ func cmdTaskView(args []string, c *client, out io.Writer) int {
 		return 2
 	}
 
-	t, err := c.getTaskByID(id)
+	t, err := c.GetTaskByID(id)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 
-	var comments []comment
+	var comments []clickup.Comment
 	if showComments > 0 || full {
 		// The task fetch already resolved a custom id, so follow-up
 		// calls can use the internal id directly.
-		comments, err = c.getComments(t.ID)
+		comments, err = c.GetComments(t.ID)
 		if err != nil {
 			return renderAPIError(out, err)
 		}
@@ -78,14 +78,14 @@ func cmdTaskView(args []string, c *client, out io.Writer) int {
 // displayID is the id shown to the user everywhere. With
 // CLICKUP_AXI_CUSTOM_IDS set the custom id is the workspace's lingua
 // franca, so output and hints reference it instead of the internal id.
-func displayID(t *task) string {
-	if customIDsForced() && t.CustomID != "" {
+func displayID(t *clickup.Task) string {
+	if clickup.CustomIDsForced() && t.CustomID != "" {
 		return t.CustomID
 	}
 	return t.ID
 }
 
-func renderTask(out io.Writer, t *task, comments []comment, showComments int, full bool) {
+func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, showComments int, full bool) {
 	fmt.Fprintln(out, "task:")
 	fmt.Fprintf(out, "  id: %s\n", displayID(t))
 	fmt.Fprintf(out, "  title: %s\n", t.Name)
@@ -97,7 +97,7 @@ func renderTask(out io.Writer, t *task, comments []comment, showComments int, fu
 	if t.Priority != nil {
 		fmt.Fprintf(out, "  priority: %s\n", t.Priority.Priority)
 	}
-	if d := t.DueDate.date(); d != "" {
+	if d := t.DueDate.Date(); d != "" {
 		fmt.Fprintf(out, "  due: %s\n", d)
 	}
 	fmt.Fprintf(out, "  url: %s\n", t.URL)
@@ -131,8 +131,8 @@ func renderTask(out io.Writer, t *task, comments []comment, showComments int, fu
 			shown = shown[:showComments]
 		}
 		total := strconv.Itoa(len(comments))
-		if len(comments) == commentsPageSize {
-			total = strconv.Itoa(commentsPageSize) + "+"
+		if len(comments) == clickup.CommentsPageSize {
+			total = strconv.Itoa(clickup.CommentsPageSize) + "+"
 		}
 		fmt.Fprintf(out, "comments: showing %d of %s (newest first)\n", len(shown), total)
 		fmt.Fprintf(out, "comments[%d]{author,date,text}:\n", len(shown))
@@ -145,9 +145,9 @@ func renderTask(out io.Writer, t *task, comments []comment, showComments int, fu
 					text += "..."
 				}
 			}
-			fmt.Fprintf(out, "  %s,%s,%s\n", toonCell(cm.User.Username), cm.Date.date(), toonCell(text))
+			fmt.Fprintf(out, "  %s,%s,%s\n", toonCell(cm.User.Username), cm.Date.Date(), toonCell(text))
 		}
-		if len(shown) < len(comments) || len(comments) == commentsPageSize {
+		if len(shown) < len(comments) || len(comments) == clickup.CommentsPageSize {
 			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all fetched comments", displayID(t)))
 		}
 	}
@@ -156,7 +156,7 @@ func renderTask(out io.Writer, t *task, comments []comment, showComments int, fu
 	writeHelp(out, help...)
 }
 
-func cmdTaskEdit(args []string, c *client, out io.Writer) int {
+func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	var id, status string
 	statusSet := false
 	for i := 0; i < len(args); i++ {
@@ -194,7 +194,7 @@ func cmdTaskEdit(args []string, c *client, out io.Writer) int {
 		return 2
 	}
 
-	t, err := c.getTaskByID(id)
+	t, err := c.GetTaskByID(id)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
@@ -203,7 +203,7 @@ func cmdTaskEdit(args []string, c *client, out io.Writer) int {
 		return 0
 	}
 	// The fetch above resolved any custom id; mutate via internal id.
-	if err := c.setTaskStatus(t.ID, status); err != nil {
+	if err := c.SetTaskStatus(t.ID, status); err != nil {
 		// The only mutation here is a status change, so enrich any rejection
 		// with the list's valid statuses for one-turn recovery.
 		if valid := validStatuses(c, t.List.ID); valid != "" {
@@ -218,8 +218,8 @@ func cmdTaskEdit(args []string, c *client, out io.Writer) int {
 	return 0
 }
 
-func validStatuses(c *client, listID string) string {
-	l, err := c.getList(listID)
+func validStatuses(c *clickup.Client, listID string) string {
+	l, err := c.GetList(listID)
 	if err != nil {
 		return ""
 	}
@@ -230,7 +230,7 @@ func validStatuses(c *client, listID string) string {
 	return strings.Join(names, ", ")
 }
 
-func usernames(users []user) string {
+func usernames(users []clickup.User) string {
 	names := make([]string, 0, len(users))
 	for _, u := range users {
 		names = append(names, u.Username)
@@ -238,13 +238,13 @@ func usernames(users []user) string {
 	return strings.Join(names, ", ")
 }
 
-func renderAPIError(out io.Writer, err *apiError) int {
-	if err.message == errNoAuth {
-		writeError(out, err.message,
+func renderAPIError(out io.Writer, err *clickup.APIError) int {
+	if err.Message == clickup.ErrNoAuth {
+		writeError(out, err.Message,
 			"Run `clickup-axi auth login` and paste a token from "+tokenURL,
 			"Agents: `clickup-axi auth login < tokenfile` or export CLICKUP_TOKEN from a secret store")
 		return 1
 	}
-	writeError(out, err.message)
+	writeError(out, err.Message)
 	return 1
 }

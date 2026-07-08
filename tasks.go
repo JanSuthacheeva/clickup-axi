@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 )
 
 const tasksHelp = `clickup-axi tasks [id | edit <id>] [flags]
@@ -29,7 +31,7 @@ examples:
   clickup-axi tasks 86ey3tx8m --full
   clickup-axi tasks edit HGAI-2316 --status "in review"`
 
-func cmdTasks(args []string, c *client, out io.Writer) int {
+func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 	if len(args) > 0 {
 		switch args[0] {
 		case "--help", "-h":
@@ -42,11 +44,11 @@ func cmdTasks(args []string, c *client, out io.Writer) int {
 		return cmdTaskView(args, c, out)
 	}
 
-	u, err := c.getUser()
+	u, err := c.GetUser()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
-	teams, err := c.getTeams()
+	teams, err := c.GetTeams()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
@@ -60,7 +62,7 @@ func cmdTasks(args []string, c *client, out io.Writer) int {
 		return 1
 	}
 
-	tasks, err := c.getTeamTasks(teams[0].ID, u.ID)
+	tasks, err := c.GetTeamTasks(teams[0].ID, u.ID)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
@@ -70,14 +72,14 @@ func cmdTasks(args []string, c *client, out io.Writer) int {
 	}
 
 	suffix := ""
-	if len(tasks) == teamTasksPageSize {
+	if len(tasks) == clickup.TeamTasksPageSize {
 		suffix = " (first page; more may exist)"
 	}
 	fmt.Fprintf(out, "tasks: %d open tasks assigned to %s%s\n", len(tasks), u.Username, suffix)
 	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
 	for i := range tasks {
 		t := &tasks[i]
-		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), toonCell(t.Name), toonCell(t.Status.Status), t.DueDate.date())
+		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), toonCell(t.Name), toonCell(t.Status.Status), t.DueDate.Date())
 	}
 	writeHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
 	return 0
