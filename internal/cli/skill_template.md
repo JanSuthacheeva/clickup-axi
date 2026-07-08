@@ -70,6 +70,12 @@ Task ids may be custom (HGAI-2316, case-insensitive) or internal
 (86ey3tx8m). An invalid status fails with the list's valid statuses
 echoed inline - pick one and retry once.
 
+`search` covers your own tasks by default. Before widening with
+`--assignee all`, ask the user which project (space) the task is in -
+people nearly always know - then retry with `--space "<name>"`. Space
+and assignee names resolve case-insensitively; a wrong name fails with
+the valid options inlined, so pick one and retry once.
+
 ## Updates
 
 When any output ends with an `update: vX.Y.Z available` line, ask the

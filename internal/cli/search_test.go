@@ -108,14 +108,153 @@ func TestSearchAssigneeAllWithFilterScansEveryone(t *testing.T) {
 	}
 }
 
-func TestSearchAssigneeRejectsBadValue(t *testing.T) {
-	_, c := newFakeClickUp(t)
-	out, code := runCLI(t, c, "search", "deploy", "--assignee", "bob")
-	if code != 2 {
-		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+// teamWithMembersJSON is the workspace fixture for name-resolution
+// tests: two members whose names share a substring ("n") but only one
+// matches "ting".
+const teamWithMembersJSON = `{"teams": [{"id": "9018", "name": "Buzzwoo", "members": [
+	{"user": {"id": 42, "username": "Jan Suthacheeva", "email": "jan@buzzwoo.de"}},
+	{"user": {"id": 77, "username": "Ting Nguyen", "email": "ting@buzzwoo.de"}}
+]}]}`
+
+func TestSearchAssigneeResolvesMemberByName(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", teamWithMembersJSON)
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("assignees[]"); got != "77" {
+			t.Errorf("assignees[] = %q, want 77 (resolved from name)", got)
+		}
+		w.Write([]byte(searchCorpus))
+	})
+
+	// "ting" is lowercase and only a prefix of the username.
+	out, code := runCLI(t, c, "search", "deploy", "--assignee", "ting")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "--assignee takes me, all, or a numeric user id") {
-		t.Errorf("output missing assignee validation\noutput:\n%s", out)
+	if !strings.Contains(out, `scope: assignee=77 "Ting Nguyen";`) {
+		t.Errorf("scope must show the resolved member\noutput:\n%s", out)
+	}
+}
+
+func TestSearchAssigneeUnknownNameListsMembers(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", teamWithMembersJSON)
+
+	out, code := runCLI(t, c, "search", "deploy", "--assignee", "bob")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `assignee "bob" matches none of the members of Buzzwoo: 42 "Jan Suthacheeva", 77 "Ting Nguyen"`) {
+		t.Errorf("error must inline the members for a one-step retry\noutput:\n%s", out)
+	}
+}
+
+func TestSearchAssigneeAmbiguousNameListsCandidates(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", teamWithMembersJSON)
+
+	// "n" is a substring of both usernames.
+	out, code := runCLI(t, c, "search", "deploy", "--assignee", "n")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `assignee "n" is ambiguous: 42 "Jan Suthacheeva", 77 "Ting Nguyen"`) {
+		t.Errorf("ambiguity must list the candidates\noutput:\n%s", out)
+	}
+}
+
+func TestSearchSpaceResolvesByName(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/space", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"spaces": [{"id": "111", "name": "Holy Grail"}, {"id": "222", "name": "Webshop"}]}`))
+	})
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("space_ids[]"); got != "222" {
+			t.Errorf("space_ids[] = %q, want 222 (resolved from name)", got)
+		}
+		w.Write([]byte(searchCorpus))
+	})
+
+	out, code := runCLI(t, c, "search", "deploy", "--space", "webshop")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `space=222 "Webshop"`) {
+		t.Errorf("scope must show the resolved space\noutput:\n%s", out)
+	}
+}
+
+func TestSearchSpaceIDSkipsLookup(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/space", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("space lookup attempted for a numeric --space id")
+	})
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("space_ids[]"); got != "333" {
+			t.Errorf("space_ids[] = %q, want 333", got)
+		}
+		w.Write([]byte(searchCorpus))
+	})
+
+	out, code := runCLI(t, c, "search", "deploy", "--space", "333")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "space=333;") {
+		t.Errorf("scope must show the space id\noutput:\n%s", out)
+	}
+}
+
+func TestSearchSpaceSubstringResolves(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/space", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"spaces": [{"id": "111", "name": "Holy Grail"}, {"id": "222", "name": "Webshop"}]}`))
+	})
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("space_ids[]"); got != "222" {
+			t.Errorf("space_ids[] = %q, want 222 (unique substring match)", got)
+		}
+		w.Write([]byte(searchCorpus))
+	})
+
+	out, code := runCLI(t, c, "search", "deploy", "--space", "shop")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+}
+
+func TestSearchSpaceUnknownNameListsSpaces(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/space", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"spaces": [{"id": "111", "name": "Holy Grail"}, {"id": "222", "name": "Webshop"}]}`))
+	})
+
+	out, code := runCLI(t, c, "search", "deploy", "--space", "nope")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `space "nope" matches none of the workspace's 2 spaces: 111 "Holy Grail", 222 "Webshop"`) {
+		t.Errorf("error must inline the spaces for a one-step retry\noutput:\n%s", out)
+	}
+}
+
+func TestSearchSpaceAmbiguousNameListsCandidates(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/space", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"spaces": [{"id": "111", "name": "OM Unit: Linda"}, {"id": "222", "name": "OM Unit: Marcel"}]}`))
+	})
+
+	out, code := runCLI(t, c, "search", "deploy", "--space", "om unit")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `space "om unit" is ambiguous: 111 "OM Unit: Linda", 222 "OM Unit: Marcel"`) {
+		t.Errorf("ambiguity must list the candidates\noutput:\n%s", out)
 	}
 }
 
@@ -188,7 +327,7 @@ func TestSearchZeroMatchesIsExplicit(t *testing.T) {
 	for _, want := range []string{
 		`search "kubernetes": 0 matches`,
 		"scope: assignee=me; closed excluded; scanned 4 (complete)",
-		"Widen with --assignee all",
+		"Ask the user which project (space) the task is in",
 		"Add --include-closed to also search the final closed status",
 		"Comment bodies are not searched",
 	} {

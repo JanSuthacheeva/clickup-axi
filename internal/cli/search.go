@@ -19,14 +19,18 @@ API has no text search, so this filters tasks server-side, then ranks
 the matches locally (title above description; AND across words).
 
 By default it searches only your own tasks and hides tasks in the final
-"closed" status. Widen with --assignee all, but then at least one other
-filter (--status/--space/--list/--updated-after/--updated-before) is
-required so the scan stays bounded. Comment bodies are not searched.
+"closed" status. Widen with --assignee, but --assignee all needs at
+least one other filter (--status/--space/--list/--updated-after/
+--updated-before) so the scan stays bounded. People nearly always know
+which project (space) a task lives in - when unsure, ask the user for
+it instead of scanning widely. Comment bodies are not searched.
 
 flags:
-  --assignee me|all|<id>   whose tasks to search (default: me)
+  --assignee <who>         me (default), all, a member's name, or an id;
+                           names resolve case-insensitively
   --status "<status>"      only tasks in this status
-  --space <id>             only tasks in this space
+  --space <name|id>        only tasks in this space (project); names
+                           resolve case-insensitively
   --list <id>              only tasks in this list
   --updated-after  <date>  updated on/after YYYY-MM-DD
   --updated-before <date>  updated before YYYY-MM-DD
@@ -36,6 +40,7 @@ flags:
 examples:
   clickup-axi search "oauth redirect"
   clickup-axi search invoice --status "in review"
+  clickup-axi search checkout --assignee ting --space "Webshop"
   clickup-axi search migration --assignee all --updated-after 2026-05-01`
 
 const (
@@ -74,13 +79,16 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 			val := args[i]
 			switch flag {
 			case "--assignee":
-				if !strings.EqualFold(val, "me") && !strings.EqualFold(val, "all") {
-					if _, err := strconv.ParseInt(val, 10, 64); err != nil {
-						output.WriteError(out, fmt.Sprintf("--assignee takes me, all, or a numeric user id, got %q", val))
-						return 2
-					}
+				// me/all are keywords; anything else is resolved later
+				// (numeric id directly, otherwise by member name).
+				switch {
+				case strings.EqualFold(val, "me"):
+					assignee = "me"
+				case strings.EqualFold(val, "all"):
+					assignee = "all"
+				default:
+					assignee = val
 				}
-				assignee = strings.ToLower(val)
 			case "--status":
 				status = val
 			case "--space":
@@ -149,18 +157,30 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 	if status != "" {
 		q.Statuses = []string{status}
 	}
+	spaceLabel := space
 	if space != "" {
-		q.SpaceIDs = []string{space}
+		sp, apiErr := c.ResolveSpace(team.ID, space)
+		if apiErr != nil {
+			return renderAPIError(out, apiErr)
+		}
+		q.SpaceIDs = []string{sp.ID}
+		if sp.Name != "" {
+			spaceLabel = fmt.Sprintf("%s %q", sp.ID, sp.Name)
+		}
 	}
 	if list != "" {
 		q.ListIDs = []string{list}
 	}
+	assigneeLabel := assignee
 	if assignee != "all" {
-		id, apiErr := resolveAssignee(assignee, c)
+		u, apiErr := resolveAssignee(assignee, team, c)
 		if apiErr != nil {
 			return renderAPIError(out, apiErr)
 		}
-		q.Assignees = []int64{id}
+		q.Assignees = []int64{u.ID}
+		if assignee != "me" && u.Username != "" {
+			assigneeLabel = fmt.Sprintf("%d %q", u.ID, u.Username)
+		}
 	}
 
 	var candidates []clickup.Task
@@ -182,9 +202,9 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 
 	matches := rankTasks(query, candidates)
 	sc := searchScope{
-		assignee:      assignee,
+		assignee:      assigneeLabel,
 		status:        status,
-		space:         space,
+		space:         spaceLabel,
 		list:          list,
 		updatedAfter:  updatedAfter,
 		updatedBefore: updatedBefore,
@@ -196,19 +216,19 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 	return 0
 }
 
-// resolveAssignee turns the --assignee value into a user id: "me"
-// resolves the token's own user, a numeric value is used as-is. "all"
-// is handled by the caller (no assignee filter) and never reaches here.
-func resolveAssignee(assignee string, c *clickup.Client) (int64, *clickup.APIError) {
+// resolveAssignee turns the --assignee value into a user: "me"
+// resolves the token's own user, a numeric value is used as an id
+// directly, and anything else is matched against the workspace's
+// members by name (or email). "all" is handled by the caller (no
+// assignee filter) and never reaches here.
+func resolveAssignee(assignee string, team *clickup.Team, c *clickup.Client) (*clickup.User, *clickup.APIError) {
 	if assignee == "me" {
-		u, err := c.GetUser()
-		if err != nil {
-			return 0, err
-		}
-		return u.ID, nil
+		return c.GetUser()
 	}
-	id, _ := strconv.ParseInt(assignee, 10, 64) // validated during flag parsing
-	return id, nil
+	if id, err := strconv.ParseInt(assignee, 10, 64); err == nil {
+		return &clickup.User{ID: id}, nil
+	}
+	return team.ResolveMember(assignee)
 }
 
 // parseSearchDate accepts a YYYY-MM-DD date and returns its UTC
@@ -391,7 +411,7 @@ func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchS
 	if len(matches) == 0 {
 		help := []string{}
 		if sc.assignee != "all" {
-			help = append(help, "Widen with --assignee all plus a --status/--space/--list/--updated-after filter")
+			help = append(help, "Ask the user which project (space) the task is in, then retry with --assignee all --space \"<name>\"")
 		}
 		if !sc.includeClosed {
 			help = append(help, "Add --include-closed to also search the final closed status")

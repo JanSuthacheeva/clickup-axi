@@ -42,8 +42,8 @@ var surface = []command{
 		comment: "find YOUR tasks by words in the title or description",
 	},
 	{
-		skill:   `clickup-axi search "<query>" --assignee all --status "<status>"`,
-		comment: "widen past your own tasks (needs a filter; also --space/--list/--updated-after)",
+		skill:   `clickup-axi search "<query>" --assignee all --space "<space>"`,
+		comment: "widen beyond your tasks; space and assignee resolve by name",
 	},
 	{
 		usage:   "tasks edit <id>",

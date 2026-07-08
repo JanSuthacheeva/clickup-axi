@@ -57,10 +57,15 @@ description; every query word must match). To stay bounded and
 relevant it searches **only your own tasks by default** and hides the
 final `closed` status; each result prints a `scope:` line stating
 exactly what was searched. Widen with `--assignee all`, which then
-requires at least one bounding filter:
+requires at least one bounding filter. Spaces and assignees resolve
+by name (case-insensitive), because people think in projects and
+names, not ids - and a person searching for a task nearly always
+knows which project it is in, so agents are guided to ask for the
+project rather than scan widely:
 
 ```sh
 clickup-axi search invoice --status "in review"
+clickup-axi search checkout --assignee ting --space "Webshop"
 clickup-axi search migration --assignee all --updated-after 2026-05-01
 ```
 

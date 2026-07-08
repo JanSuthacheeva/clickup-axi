@@ -68,7 +68,7 @@ clickup-axi tasks                          # open tasks assigned to the user
 clickup-axi tasks <id>                     # one task: metadata, description, newest comments
 clickup-axi tasks <id> --full              # complete description and all fetched comments
 clickup-axi search "<query>"               # find YOUR tasks by words in the title or description
-clickup-axi search "<query>" --assignee all --status "<status>"# widen past your own tasks (needs a filter; also --space/--list/--updated-after)
+clickup-axi search "<query>" --assignee all --space "<space>"# widen beyond your tasks; space and assignee resolve by name
 clickup-axi tasks edit <id> --status "<status>"
 clickup-axi tasks comment <id> --text "<text>"
 clickup-axi update                         # self-update to the latest release (only after user consent)
@@ -77,6 +77,12 @@ clickup-axi update                         # self-update to the latest release (
 Task ids may be custom (HGAI-2316, case-insensitive) or internal
 (86ey3tx8m). An invalid status fails with the list's valid statuses
 echoed inline - pick one and retry once.
+
+`search` covers your own tasks by default. Before widening with
+`--assignee all`, ask the user which project (space) the task is in -
+people nearly always know - then retry with `--space "<name>"`. Space
+and assignee names resolve case-insensitively; a wrong name fails with
+the valid options inlined, so pick one and retry once.
 
 ## Updates
 
