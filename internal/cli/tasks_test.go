@@ -11,13 +11,20 @@ import (
 
 func (f *fakeClickUp) me(t *testing.T, id int64, username string) {
 	t.Helper()
+	f.meWithTeams(t, id, username, `{"teams": [{"id": "9018", "name": "Buzzwoo"}]}`)
+}
+
+func (f *fakeClickUp) meWithTeams(t *testing.T, id int64, username, teamsJSON string) {
+	t.Helper()
 	f.mux.HandleFunc("GET /api/v2/user", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, `{"user": {"id": %d, "username": %q}}`, id, username)
 	})
 	f.mux.HandleFunc("GET /api/v2/team", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"teams": [{"id": "9018", "name": "Buzzwoo"}]}`))
+		w.Write([]byte(teamsJSON))
 	})
 }
+
+const twoTeamsJSON = `{"teams": [{"id": "9001", "name": "BUZZWOO"}, {"id": "9002", "name": "Personal"}]}`
 
 func TestTasksListsOpenAssignedTasks(t *testing.T) {
 	f, c := newFakeClickUp(t)
@@ -183,6 +190,86 @@ func TestForcedCustomIDsAreShownEverywhere(t *testing.T) {
 	}
 	if strings.Contains(out, "id: abc123") {
 		t.Errorf("internal id leaked into the id field in forced mode\noutput:\n%s", out)
+	}
+}
+
+func TestTasksMultipleWorkspacesErrorInlinesThePins(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", twoTeamsJSON)
+
+	out, code := runCLI(t, c, "tasks")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	want := `error: 2 workspaces are visible; set CLICKUP_AXI_WORKSPACE to one of: 9001 "BUZZWOO", 9002 "Personal"` + "\n"
+	if out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+}
+
+func TestTasksPinnedWorkspaceListsItsTasks(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv(clickup.WorkspaceEnv, "9002")
+	f.meWithTeams(t, 42, "jan", twoTeamsJSON)
+	f.mux.HandleFunc("GET /api/v2/team/9002/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": []}`))
+	})
+
+	out, code := runCLI(t, c, "tasks")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "tasks: 0 open tasks assigned to jan in Personal") {
+		t.Errorf("output missing empty state for the pinned workspace\noutput:\n%s", out)
+	}
+}
+
+func TestTasksCustomIDResolvesAgainstPinnedWorkspace(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv(clickup.WorkspaceEnv, "9001")
+	f.meWithTeams(t, 42, "jan", twoTeamsJSON)
+	f.mux.HandleFunc("GET /api/v2/task/HGAI-2316", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("team_id"); got != "9001" {
+			t.Errorf("team_id = %q, want 9001", got)
+		}
+		w.Write([]byte(taskJSON))
+	})
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "hgai-2316")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "title: Fix login redirect") {
+		t.Errorf("output missing task detail\noutput:\n%s", out)
+	}
+}
+
+func TestTasksCustomIDWithoutPinFailsRecoverably(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", twoTeamsJSON)
+
+	out, code := runCLI(t, c, "tasks", "HGAI-2316")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `set CLICKUP_AXI_WORKSPACE to one of: 9001 "BUZZWOO", 9002 "Personal"`) {
+		t.Errorf("output missing recoverable pin instruction\noutput:\n%s", out)
+	}
+}
+
+func TestTasksInvisiblePinListsVisibleWorkspaces(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv(clickup.WorkspaceEnv, "1234")
+	f.meWithTeams(t, 42, "jan", twoTeamsJSON)
+
+	out, code := runCLI(t, c, "tasks")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	want := `error: CLICKUP_AXI_WORKSPACE="1234" does not match any workspace visible to this token (visible: 9001 "BUZZWOO", 9002 "Personal")` + "\n"
+	if out != want {
+		t.Errorf("output = %q, want %q", out, want)
 	}
 }
 

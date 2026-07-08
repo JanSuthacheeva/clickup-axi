@@ -55,26 +55,17 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 	if err != nil {
 		return renderAPIError(out, err)
 	}
-	teams, err := c.GetTeams()
+	team, err := c.SelectTeam()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
-	switch {
-	case len(teams) == 0:
-		output.WriteError(out, "no workspaces are visible to this token")
-		return 1
-	case len(teams) > 1:
-		output.WriteError(out, fmt.Sprintf("%d workspaces are visible and tasks cannot pick one yet", len(teams)),
-			"Run `clickup-axi` to see the workspaces")
-		return 1
-	}
 
-	tasks, err := c.GetTeamTasks(teams[0].ID, u.ID)
+	tasks, err := c.GetTeamTasks(team.ID, u.ID)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 	if len(tasks) == 0 {
-		fmt.Fprintf(out, "tasks: 0 open tasks assigned to %s in %s\n", u.Username, teams[0].Name)
+		fmt.Fprintf(out, "tasks: 0 open tasks assigned to %s in %s\n", u.Username, team.Name)
 		return 0
 	}
 
