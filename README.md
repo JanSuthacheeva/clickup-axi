@@ -93,10 +93,17 @@ binary's embedded skill whenever they drift, so binary and skill never
 skew; symlinked checkout installs are left alone. Set
 `CLICKUP_AXI_NO_UPDATE_CHECK=1` to disable all of this.
 
-Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`); an id is
-tried as internal first with a custom-id fallback. Set
-`CLICKUP_AXI_CUSTOM_IDS=1` to always resolve custom ids directly and skip
-the internal attempt.
+Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`); an id
+is tried as internal first with a custom-id fallback, unless
+`CLICKUP_AXI_CUSTOM_IDS` says otherwise (see below).
+
+## Environment variables
+
+| Variable | Effect | Default |
+|---|---|---|
+| `CLICKUP_TOKEN` | API token to use; takes precedence over the token stored by `auth login`. | unset - the stored token is used |
+| `CLICKUP_AXI_CUSTOM_IDS` | Resolve task ids as custom ids (`HGAI-2316`) only, skipping the internal-id attempt, and display custom ids everywhere. Any value except `0` or `false` enables it. | unset - internal ids tried first, custom fallback |
+| `CLICKUP_AXI_NO_UPDATE_CHECK` | Disable everything update-related: the passive daily check, the `update:` notice, and skill-copy healing. Any non-empty value. | unset - update checks enabled |
 
 ## Behavior contract (AXI)
 
