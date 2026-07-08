@@ -1,4 +1,7 @@
-package main
+// Package cli is the driving adapter: it turns argv into API calls and
+// renders every result following the AXI output contract. Run is the
+// single entry point; cmd/clickup-axi wires the real dependencies in.
+package cli
 
 import (
 	"fmt"
@@ -38,11 +41,9 @@ Run ` + "`clickup-axi tasks --help`" + ` for flags and examples.`)
 	return b.String()
 }
 
-func main() {
-	os.Exit(run(os.Args[1:], clickup.NewFromEnv(), update.NewFromEnv(generateSkill()), os.Stdin, os.Stdout))
-}
-
-func run(args []string, c *clickup.Client, up *update.Updater, stdin io.Reader, out io.Writer) int {
+// Run dispatches one command and appends the post-command maintenance
+// lines (update notice, skill heal) where the output contract allows.
+func Run(args []string, c *clickup.Client, up *update.Updater, stdin io.Reader, out io.Writer) int {
 	code := dispatch(args, c, up, stdin, out)
 	if up != nil && postCommandAllowed(args) {
 		up.PostCommand(out, code == 0)

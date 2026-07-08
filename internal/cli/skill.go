@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	_ "embed"
@@ -37,7 +37,7 @@ examples:
   clickup-axi skill --write`
 
 // generateSkill renders the complete SKILL.md content.
-func generateSkill() string {
+func GenerateSkill() string {
 	var b strings.Builder
 	for _, c := range surface {
 		if c.skill == "" {
@@ -76,7 +76,7 @@ func cmdSkill(args []string, out io.Writer) int {
 		return 2
 	}
 
-	want := generateSkill()
+	want := GenerateSkill()
 	switch {
 	case check:
 		got, err := os.ReadFile(skillPath)

@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"crypto/sha256"
@@ -261,7 +261,7 @@ func TestNoticeSuppressedOnSkillOutput(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if out != generateSkill() {
+	if out != GenerateSkill() {
 		t.Errorf("skill output is no longer byte-exact:\n%s", out)
 	}
 }
@@ -269,14 +269,14 @@ func TestNoticeSuppressedOnSkillOutput(t *testing.T) {
 // healUpdater points the self-heal at a temp skill copy path.
 func healUpdater(t *testing.T) *update.Updater {
 	t.Helper()
-	return &update.Updater{SkillPath: filepath.Join(t.TempDir(), "SKILL.md"), SkillContent: generateSkill()}
+	return &update.Updater{SkillPath: filepath.Join(t.TempDir(), "SKILL.md"), SkillContent: GenerateSkill()}
 }
 
 func TestSkillCopySelfHeals(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
 	up := healUpdater(t)
-	stale := strings.Replace(generateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
+	stale := strings.Replace(GenerateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
 	if err := os.WriteFile(up.SkillPath, []byte(stale), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,7 @@ func TestSkillCopySelfHeals(t *testing.T) {
 		t.Errorf("heal was not announced\noutput:\n%s", out)
 	}
 	got, _ := os.ReadFile(up.SkillPath)
-	if string(got) != generateSkill() {
+	if string(got) != GenerateSkill() {
 		t.Errorf("skill copy was not healed to the embedded content")
 	}
 
@@ -323,7 +323,7 @@ func TestSkillCopySymlinkIsUntouched(t *testing.T) {
 	f.me(t, 42, "jan")
 	dir := t.TempDir()
 	target := filepath.Join(dir, "checkout-SKILL.md")
-	stale := strings.Replace(generateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
+	stale := strings.Replace(GenerateSkill(), "# clickup-axi", "# clickup-axi (stale)", 1)
 	if err := os.WriteFile(target, []byte(stale), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -331,7 +331,7 @@ func TestSkillCopySymlinkIsUntouched(t *testing.T) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	up := &update.Updater{SkillPath: link, SkillContent: generateSkill()}
+	up := &update.Updater{SkillPath: link, SkillContent: GenerateSkill()}
 
 	out, _ := runCLIWithUpdater(t, c, up, "")
 	if strings.Contains(out, "skill: refreshed") {

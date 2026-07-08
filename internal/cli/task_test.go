@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -92,7 +92,7 @@ func runCLIWithStdin(t *testing.T, c *clickup.Client, stdin string, args ...stri
 func runCLIWithUpdater(t *testing.T, c *clickup.Client, up *update.Updater, stdin string, args ...string) (string, int) {
 	t.Helper()
 	var buf bytes.Buffer
-	code := run(args, c, up, strings.NewReader(stdin), &buf)
+	code := Run(args, c, up, strings.NewReader(stdin), &buf)
 	return buf.String(), code
 }
 

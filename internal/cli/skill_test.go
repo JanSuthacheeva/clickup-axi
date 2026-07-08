@@ -1,7 +1,8 @@
-package main
+package cli
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -34,14 +35,17 @@ func TestSkillPrintsGeneratedSkill(t *testing.T) {
 
 // TestCommittedSkillIsFresh is the local drift guard: plain `go test`
 // fails when skills/clickup-axi/SKILL.md no longer matches the
-// generator, mirroring `clickup-axi skill --check` in CI.
+// generator, mirroring `clickup-axi skill --check` in CI. The test
+// runs in internal/cli, so it reaches the committed file through the
+// repository root.
 func TestCommittedSkillIsFresh(t *testing.T) {
-	got, err := os.ReadFile(skillPath)
+	committed := filepath.Join("..", "..", skillPath)
+	got, err := os.ReadFile(committed)
 	if err != nil {
-		t.Fatalf("read %s: %v", skillPath, err)
+		t.Fatalf("read %s: %v", committed, err)
 	}
-	if string(got) != generateSkill() {
-		t.Errorf("%s is stale - run `go run . skill --write` and commit the result", skillPath)
+	if string(got) != GenerateSkill() {
+		t.Errorf("%s is stale - run `go run ./cmd/clickup-axi skill --write` and commit the result", skillPath)
 	}
 }
 
