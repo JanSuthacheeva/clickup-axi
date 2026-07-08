@@ -89,7 +89,7 @@ func TestSelectTeamInvisiblePinListsVisibleWorkspaces(t *testing.T) {
 	if err == nil {
 		t.Fatal("SelectTeam() error = nil, want error")
 	}
-	want := `CLICKUP_AXI_WORKSPACE="1234" does not match any workspace visible to this token (visible: 9001 "BUZZWOO", 9002 "Personal")`
+	want := `CLICKUP_AXI_WORKSPACE="1234" matches none of the visible workspaces: 9001 "BUZZWOO", 9002 "Personal"`
 	if err.Message != want {
 		t.Errorf("SelectTeam() error = %q, want %q", err.Message, want)
 	}

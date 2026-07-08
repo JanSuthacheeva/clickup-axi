@@ -267,7 +267,7 @@ func TestTasksInvisiblePinListsVisibleWorkspaces(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
 	}
-	want := `error: CLICKUP_AXI_WORKSPACE="1234" does not match any workspace visible to this token (visible: 9001 "BUZZWOO", 9002 "Personal")` + "\n"
+	want := `error: CLICKUP_AXI_WORKSPACE="1234" matches none of the visible workspaces: 9001 "BUZZWOO", 9002 "Personal"` + "\n"
 	if out != want {
 		t.Errorf("output = %q, want %q", out, want)
 	}

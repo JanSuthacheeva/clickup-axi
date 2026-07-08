@@ -124,7 +124,7 @@ func cmdHome(c *clickup.Client, out io.Writer) int {
 		fmt.Fprintln(out, pinnedWorkspaceLine(teams, pin))
 	} else if len(teams) > 1 {
 		help = append([]string{
-			"Set " + clickup.WorkspaceEnv + "=<id> to pin a workspace (required for `clickup-axi tasks` and custom ids)",
+			"Set " + clickup.WorkspaceEnv + "=<id> to pin a workspace (needed for `tasks` and custom ids)",
 		}, help...)
 	}
 	output.WriteHelp(out, help...)
@@ -137,10 +137,10 @@ func cmdHome(c *clickup.Client, out io.Writer) int {
 func pinnedWorkspaceLine(teams []clickup.Team, pin string) string {
 	for _, t := range teams {
 		if t.ID == pin {
-			return fmt.Sprintf("workspace: %s %s (pinned by %s)", t.ID, t.Name, clickup.WorkspaceEnv)
+			return fmt.Sprintf("workspace: %s %s (%s)", t.ID, t.Name, clickup.WorkspaceEnv)
 		}
 	}
-	return fmt.Sprintf("workspace: %s (pinned by %s, not visible to this token)", pin, clickup.WorkspaceEnv)
+	return fmt.Sprintf("workspace: %s (%s, not visible to this token)", pin, clickup.WorkspaceEnv)
 }
 
 func execPath() string {

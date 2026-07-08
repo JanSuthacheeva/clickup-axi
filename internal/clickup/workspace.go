@@ -34,7 +34,7 @@ func (c *Client) SelectTeam() (*Team, *APIError) {
 			}
 		}
 		return nil, &APIError{Message: fmt.Sprintf(
-			"%s=%q does not match any workspace visible to this token (visible: %s)",
+			"%s=%q matches none of the visible workspaces: %s",
 			WorkspaceEnv, want, workspaceList(teams))}
 	}
 	switch len(teams) {

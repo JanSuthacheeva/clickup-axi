@@ -49,19 +49,16 @@ the user the release page URL and ask them to install it themselves.
 ## Workspace setup
 
 Run `clickup-axi` (no arguments) before the first task command. If it
-lists more than one workspace and no `workspace:` line marks one as
-pinned, ask the user which workspace to use, then persist
-`CLICKUP_AXI_WORKSPACE=<id>` where they prefer - their shell profile,
-or the environment configuration of the agent running this skill -
-and export it for the current session before continuing. With a
-single workspace, or a `workspace:` line already present, no setup is
-needed.
+lists several workspaces and no `workspace:` line, ask the user which
+one to use, persist `CLICKUP_AXI_WORKSPACE=<id>` where they prefer
+(shell profile, or the agent's environment config), and export it for
+the current session. One workspace, or a `workspace:` line present:
+no setup needed.
 
-The same situation can appear later: a user invited to another
-workspace mid-project will see commands fail with "N workspaces are
-visible; set CLICKUP_AXI_WORKSPACE to one of: ...". Treat that error
-the same way - ask the user to choose from the listed workspaces,
-never pick one on your own.
+Any command may fail with "N workspaces are visible; set
+CLICKUP_AXI_WORKSPACE to one of: ..." - for example after the user
+joins another workspace. Handle it the same way: ask the user, never
+pick a workspace on your own.
 
 ## Commands
 

@@ -31,7 +31,7 @@ func TestHomeMultipleWorkspacesHintAtPin(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "Set CLICKUP_AXI_WORKSPACE=<id> to pin a workspace (required for `clickup-axi tasks` and custom ids)") {
+	if !strings.Contains(out, "Set CLICKUP_AXI_WORKSPACE=<id> to pin a workspace (needed for `tasks` and custom ids)") {
 		t.Errorf("output missing pin hint\noutput:\n%s", out)
 	}
 	if strings.Contains(out, "workspace: ") {
@@ -48,7 +48,7 @@ func TestHomeEchoesThePinnedWorkspace(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "workspace: 9002 Personal (pinned by CLICKUP_AXI_WORKSPACE)\n") {
+	if !strings.Contains(out, "workspace: 9002 Personal (CLICKUP_AXI_WORKSPACE)\n") {
 		t.Errorf("output missing pinned workspace line\noutput:\n%s", out)
 	}
 	if strings.Contains(out, "Set CLICKUP_AXI_WORKSPACE") {
@@ -65,7 +65,7 @@ func TestHomeFlagsAnInvisiblePin(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "workspace: 1234 (pinned by CLICKUP_AXI_WORKSPACE, not visible to this token)\n") {
+	if !strings.Contains(out, "workspace: 1234 (CLICKUP_AXI_WORKSPACE, not visible to this token)\n") {
 		t.Errorf("output missing invisible-pin warning\noutput:\n%s", out)
 	}
 }
