@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+	"github.com/JanSuthacheeva/clickup-axi/internal/update"
 )
 
 type fakeClickUp struct {
@@ -85,10 +86,10 @@ func runCLI(t *testing.T, c *clickup.Client, args ...string) (string, int) {
 func runCLIWithStdin(t *testing.T, c *clickup.Client, stdin string, args ...string) (string, int) {
 	t.Helper()
 	// A zero updater is inert: no cache path, no skill path, no network.
-	return runCLIWithUpdater(t, c, &updater{}, stdin, args...)
+	return runCLIWithUpdater(t, c, &update.Updater{}, stdin, args...)
 }
 
-func runCLIWithUpdater(t *testing.T, c *clickup.Client, up *updater, stdin string, args ...string) (string, int) {
+func runCLIWithUpdater(t *testing.T, c *clickup.Client, up *update.Updater, stdin string, args ...string) (string, int) {
 	t.Helper()
 	var buf bytes.Buffer
 	code := run(args, c, up, strings.NewReader(stdin), &buf)

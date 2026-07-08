@@ -8,6 +8,7 @@ import (
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
+	"github.com/JanSuthacheeva/clickup-axi/internal/update"
 	"github.com/JanSuthacheeva/clickup-axi/internal/version"
 )
 
@@ -38,13 +39,13 @@ Run ` + "`clickup-axi tasks --help`" + ` for flags and examples.`)
 }
 
 func main() {
-	os.Exit(run(os.Args[1:], clickup.NewFromEnv(), newUpdaterFromEnv(), os.Stdin, os.Stdout))
+	os.Exit(run(os.Args[1:], clickup.NewFromEnv(), update.NewFromEnv(generateSkill()), os.Stdin, os.Stdout))
 }
 
-func run(args []string, c *clickup.Client, up *updater, stdin io.Reader, out io.Writer) int {
+func run(args []string, c *clickup.Client, up *update.Updater, stdin io.Reader, out io.Writer) int {
 	code := dispatch(args, c, up, stdin, out)
 	if up != nil && postCommandAllowed(args) {
-		up.postCommand(out, code == 0)
+		up.PostCommand(out, code == 0)
 	}
 	return code
 }
@@ -63,7 +64,7 @@ func postCommandAllowed(args []string) bool {
 	return true
 }
 
-func dispatch(args []string, c *clickup.Client, up *updater, stdin io.Reader, out io.Writer) int {
+func dispatch(args []string, c *clickup.Client, up *update.Updater, stdin io.Reader, out io.Writer) int {
 	if len(args) == 0 {
 		return cmdHome(c, out)
 	}
@@ -79,7 +80,7 @@ func dispatch(args []string, c *clickup.Client, up *updater, stdin io.Reader, ou
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
 	case "update":
-		return cmdUpdate(args[1:], up, out)
+		return update.Cmd(args[1:], up, out)
 	case "skill":
 		return cmdSkill(args[1:], out)
 	default:
