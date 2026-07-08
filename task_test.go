@@ -244,17 +244,3 @@ func TestMissingTokenIsStructuredError(t *testing.T) {
 		t.Errorf("output missing auth login hint\noutput:\n%s", out)
 	}
 }
-
-func TestToonCellEscaping(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"plain", "plain"},
-		{"a, b", `"a, b"`},
-		{`say "hi"`, `"say \"hi\""`},
-		{"line\nbreak", "line break"},
-	}
-	for _, tc := range cases {
-		if got := toonCell(tc.in); got != tc.want {
-			t.Errorf("toonCell(%q) = %q, want %q", tc.in, got, tc.want)
-		}
-	}
-}

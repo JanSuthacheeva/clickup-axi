@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
 const description = "Manage ClickUp tasks - an AXI (agent-ergonomic) CLI"
@@ -97,7 +98,7 @@ func dispatch(args []string, c *clickup.Client, up *updater, stdin io.Reader, ou
 	case "skill":
 		return cmdSkill(args[1:], out)
 	default:
-		writeError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth, update, skill", args[0]),
+		output.WriteError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, auth, update, skill", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}
@@ -105,7 +106,7 @@ func dispatch(args []string, c *clickup.Client, up *updater, stdin io.Reader, ou
 
 // cmdHome shows live state instead of help text (AXI principle 8).
 func cmdHome(c *clickup.Client, out io.Writer) int {
-	fmt.Fprintf(out, "bin: %s\n", collapseHome(execPath()))
+	fmt.Fprintf(out, "bin: %s\n", output.CollapseHome(execPath()))
 	fmt.Fprintf(out, "description: %s\n", description)
 
 	u, err := c.GetUser()
@@ -123,10 +124,10 @@ func cmdHome(c *clickup.Client, out io.Writer) int {
 	} else {
 		fmt.Fprintf(out, "workspaces[%d]{id,name}:\n", len(teams))
 		for _, t := range teams {
-			fmt.Fprintf(out, "  %s,%s\n", t.ID, toonCell(t.Name))
+			fmt.Fprintf(out, "  %s,%s\n", t.ID, output.ToonCell(t.Name))
 		}
 	}
-	writeHelp(out,
+	output.WriteHelp(out,
 		"Run `clickup-axi tasks` for your open tasks",
 		"Run `clickup-axi tasks <id>` for a task with its comments",
 		"Run `clickup-axi tasks edit <id> --status \"<status>\"` to change status")

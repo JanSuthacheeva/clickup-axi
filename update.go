@@ -14,6 +14,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
 const releasesURL = "https://github.com/JanSuthacheeva/clickup-axi/releases"
@@ -138,29 +140,29 @@ func cmdUpdate(args []string, up *updater, out io.Writer) int {
 			fmt.Fprintln(out, updateHelp)
 			return 0
 		default:
-			writeError(out, fmt.Sprintf("unknown argument %q for update\n  valid: none (--help only)", a),
+			output.WriteError(out, fmt.Sprintf("unknown argument %q for update\n  valid: none (--help only)", a),
 				"Run `clickup-axi update` with no flags")
 			return 2
 		}
 	}
 	if runtime.GOOS == "windows" {
-		writeError(out, "self-update cannot replace a running executable on Windows",
+		output.WriteError(out, "self-update cannot replace a running executable on Windows",
 			"Download "+assetName()+" from "+up.releasePage()+" and replace the binary manually")
 		return 1
 	}
 	if up.exePath == "" {
-		writeError(out, "could not locate the running executable")
+		output.WriteError(out, "could not locate the running executable")
 		return 1
 	}
 
 	tag, err := up.latestTag(10 * time.Second)
 	if errors.Is(err, errNoRelease) {
-		writeError(out, "no release has been published yet",
+		output.WriteError(out, "no release has been published yet",
 			"Check "+up.releasePage()+" and retry once a release exists")
 		return 1
 	}
 	if err != nil {
-		writeError(out, "could not reach the release server",
+		output.WriteError(out, "could not reach the release server",
 			"Check network access and retry `clickup-axi update`")
 		return 1
 	}
@@ -174,31 +176,31 @@ func cmdUpdate(args []string, up *updater, out io.Writer) int {
 	asset := assetName()
 	bin, err := up.download(asset)
 	if err != nil {
-		writeError(out, "could not download "+asset,
+		output.WriteError(out, "could not download "+asset,
 			"Retry `clickup-axi update`; if it persists, download manually from "+up.releasePage())
 		return 1
 	}
 	sums, err := up.download("SHA256SUMS")
 	if err != nil {
-		writeError(out, "could not download SHA256SUMS",
+		output.WriteError(out, "could not download SHA256SUMS",
 			"Retry `clickup-axi update`; if it persists, download manually from "+up.releasePage())
 		return 1
 	}
 	if !checksumOK(sums, asset, bin) {
-		writeError(out, "checksum mismatch for "+asset+" - existing binary left untouched",
+		output.WriteError(out, "checksum mismatch for "+asset+" - existing binary left untouched",
 			"Retry `clickup-axi update`; if it persists, download manually from "+up.releasePage())
 		return 1
 	}
 
 	if err := replaceExecutable(up.exePath, bin); err != nil {
-		writeError(out, "could not replace "+collapseHome(up.exePath),
+		output.WriteError(out, "could not replace "+output.CollapseHome(up.exePath),
 			"Check write permissions for the binary's directory and retry `clickup-axi update`")
 		return 1
 	}
 	fmt.Fprintf(out, "update: v%s -> v%s\n", running, latest)
-	fmt.Fprintf(out, "  binary: %s (sha256 verified)\n", collapseHome(up.exePath))
+	fmt.Fprintf(out, "  binary: %s (sha256 verified)\n", output.CollapseHome(up.exePath))
 	fmt.Fprintln(out, "  skill: installed copies refresh on the next command")
-	writeHelp(out, "Run `clickup-axi --version` to confirm the new version")
+	output.WriteHelp(out, "Run `clickup-axi --version` to confirm the new version")
 	return 0
 }
 
@@ -247,7 +249,7 @@ func (u *updater) healSkillCopy(out io.Writer) {
 	if os.WriteFile(u.skillPath, []byte(want), 0o644) != nil {
 		return
 	}
-	fmt.Fprintf(out, "skill: refreshed %s to match this binary\n", collapseHome(u.skillPath))
+	fmt.Fprintf(out, "skill: refreshed %s to match this binary\n", output.CollapseHome(u.skillPath))
 }
 
 // notifyUpdate appends a one-line notice when a newer release is known.

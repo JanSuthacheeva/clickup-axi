@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
 const tasksHelp = `clickup-axi tasks [id | edit <id>] [flags]
@@ -54,10 +55,10 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 	}
 	switch {
 	case len(teams) == 0:
-		writeError(out, "no workspaces are visible to this token")
+		output.WriteError(out, "no workspaces are visible to this token")
 		return 1
 	case len(teams) > 1:
-		writeError(out, fmt.Sprintf("%d workspaces are visible and tasks cannot pick one yet", len(teams)),
+		output.WriteError(out, fmt.Sprintf("%d workspaces are visible and tasks cannot pick one yet", len(teams)),
 			"Run `clickup-axi` to see the workspaces")
 		return 1
 	}
@@ -79,8 +80,8 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
 	for i := range tasks {
 		t := &tasks[i]
-		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), toonCell(t.Name), toonCell(t.Status.Status), t.DueDate.Date())
+		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date())
 	}
-	writeHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
+	output.WriteHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
 	return 0
 }

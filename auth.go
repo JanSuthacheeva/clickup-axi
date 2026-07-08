@@ -12,6 +12,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
 const tokenURL = "https://app.clickup.com/settings/apps"
@@ -46,7 +47,7 @@ func cmdAuth(args []string, c *clickup.Client, stdin io.Reader, out io.Writer) i
 	case "logout":
 		return cmdAuthLogout(out)
 	default:
-		writeError(out, fmt.Sprintf("unknown auth subcommand %q\n  valid: login, logout", args[0]),
+		output.WriteError(out, fmt.Sprintf("unknown auth subcommand %q\n  valid: login, logout", args[0]),
 			"Run `clickup-axi auth --help`")
 		return 2
 	}
@@ -70,7 +71,7 @@ func cmdAuthLogin(stdin io.Reader, c *clickup.Client, out io.Writer) int {
 	}
 	token := strings.TrimSpace(string(raw))
 	if err != nil || token == "" {
-		writeError(out, "auth login needs a token and got none",
+		output.WriteError(out, "auth login needs a token and got none",
 			fmt.Sprintf("Create a token at %s", tokenURL),
 			"Run `clickup-axi auth login` in a terminal and paste it, or pipe it by reference: `clickup-axi auth login < tokenfile` (never echo a literal token; it lands in shell history)")
 		return 2
@@ -79,47 +80,47 @@ func cmdAuthLogin(stdin io.Reader, c *clickup.Client, out io.Writer) int {
 	// Validate before storing so a typo fails loudly now, not on first use.
 	u, apiErr := c.WithToken(token).GetUser()
 	if apiErr != nil {
-		writeError(out, apiErr.Message)
+		output.WriteError(out, apiErr.Message)
 		return 1
 	}
 
 	path, err := clickup.TokenFilePath()
 	if err != nil {
-		writeError(out, "could not locate the user config directory")
+		output.WriteError(out, "could not locate the user config directory")
 		return 1
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		writeError(out, "could not create "+collapseHome(filepath.Dir(path)))
+		output.WriteError(out, "could not create "+output.CollapseHome(filepath.Dir(path)))
 		return 1
 	}
 	if err := os.WriteFile(path, []byte(token), 0o600); err != nil {
-		writeError(out, "could not write "+collapseHome(path))
+		output.WriteError(out, "could not write "+output.CollapseHome(path))
 		return 1
 	}
 
 	fmt.Fprintf(out, "auth: logged in as %s (id: %d)\n", u.Username, u.ID)
-	fmt.Fprintf(out, "  token: %s (mode 600)\n", collapseHome(path))
+	fmt.Fprintf(out, "  token: %s (mode 600)\n", output.CollapseHome(path))
 	if env := os.Getenv("CLICKUP_TOKEN"); env != "" && env != token {
 		fmt.Fprintln(out, "  note: CLICKUP_TOKEN is set in this environment and takes precedence")
 	}
-	writeHelp(out, "Run `clickup-axi` to see your workspaces")
+	output.WriteHelp(out, "Run `clickup-axi` to see your workspaces")
 	return 0
 }
 
 func cmdAuthLogout(out io.Writer) int {
 	path, err := clickup.TokenFilePath()
 	if err != nil {
-		writeError(out, "could not locate the user config directory")
+		output.WriteError(out, "could not locate the user config directory")
 		return 1
 	}
 	switch err := os.Remove(path); {
 	case errors.Is(err, fs.ErrNotExist):
 		fmt.Fprintln(out, "auth: already logged out (no-op)")
 	case err != nil:
-		writeError(out, "could not remove "+collapseHome(path))
+		output.WriteError(out, "could not remove "+output.CollapseHome(path))
 		return 1
 	default:
-		fmt.Fprintf(out, "auth: logged out (removed %s)\n", collapseHome(path))
+		fmt.Fprintf(out, "auth: logged out (removed %s)\n", output.CollapseHome(path))
 	}
 	if os.Getenv("CLICKUP_TOKEN") != "" {
 		fmt.Fprintln(out, "  note: CLICKUP_TOKEN is still set in this environment and keeps authenticating")

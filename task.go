@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
 const (
@@ -23,12 +24,12 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 		case "--comments":
 			i++
 			if i >= len(args) {
-				writeError(out, "--comments needs a number", "Run `clickup-axi tasks <id> --comments 5`")
+				output.WriteError(out, "--comments needs a number", "Run `clickup-axi tasks <id> --comments 5`")
 				return 2
 			}
 			n, err := strconv.Atoi(args[i])
 			if err != nil || n < 0 {
-				writeError(out, fmt.Sprintf("--comments needs a non-negative number, got %q", args[i]))
+				output.WriteError(out, fmt.Sprintf("--comments needs a non-negative number, got %q", args[i]))
 				return 2
 			}
 			showComments = n
@@ -41,18 +42,18 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "--") {
-				writeError(out, fmt.Sprintf("unknown flag %q\n  valid: --comments N, --no-comments, --full", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q\n  valid: --comments N, --no-comments, --full", args[i]))
 				return 2
 			}
 			if id != "" {
-				writeError(out, "only one task id is accepted")
+				output.WriteError(out, "only one task id is accepted")
 				return 2
 			}
 			id = args[i]
 		}
 	}
 	if id == "" {
-		writeError(out, "a task id is needed", "Run `clickup-axi tasks <id>` (internal like 86ey3tx8m or custom like HGAI-2316)")
+		output.WriteError(out, "a task id is needed", "Run `clickup-axi tasks <id>` (internal like 86ey3tx8m or custom like HGAI-2316)")
 		return 2
 	}
 
@@ -111,13 +112,13 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 		shown := description
 		if !full {
 			var cut bool
-			shown, cut = truncateRunes(description, descriptionLimit)
+			shown, cut = output.TruncateRunes(description, descriptionLimit)
 			if cut {
 				shown += fmt.Sprintf("\n... (truncated, %d chars total)", len([]rune(description)))
 				help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for the complete description", displayID(t)))
 			}
 		}
-		writeBlock(out, "description", shown, "  ")
+		output.WriteBlock(out, "description", shown, "  ")
 	}
 
 	switch {
@@ -140,12 +141,12 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 			text := cm.Text
 			if !full {
 				var cut bool
-				text, cut = truncateRunes(text, commentLimit)
+				text, cut = output.TruncateRunes(text, commentLimit)
 				if cut {
 					text += "..."
 				}
 			}
-			fmt.Fprintf(out, "  %s,%s,%s\n", toonCell(cm.User.Username), cm.Date.Date(), toonCell(text))
+			fmt.Fprintf(out, "  %s,%s,%s\n", output.ToonCell(cm.User.Username), cm.Date.Date(), output.ToonCell(text))
 		}
 		if len(shown) < len(comments) || len(comments) == clickup.CommentsPageSize {
 			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all fetched comments", displayID(t)))
@@ -153,7 +154,7 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 	}
 
 	help = append(help, fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` to change status", displayID(t)))
-	writeHelp(out, help...)
+	output.WriteHelp(out, help...)
 }
 
 func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
@@ -164,7 +165,7 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		case "--status":
 			i++
 			if i >= len(args) {
-				writeError(out, "--status needs a value", "Run `clickup-axi tasks edit <id> --status \"in review\"`")
+				output.WriteError(out, "--status needs a value", "Run `clickup-axi tasks edit <id> --status \"in review\"`")
 				return 2
 			}
 			status = args[i]
@@ -174,22 +175,22 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "-") {
-				writeError(out, fmt.Sprintf("unknown flag %q for tasks edit\n  valid: --status", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks edit\n  valid: --status", args[i]))
 				return 2
 			}
 			if id != "" {
-				writeError(out, "tasks edit takes exactly one task id")
+				output.WriteError(out, "tasks edit takes exactly one task id")
 				return 2
 			}
 			id = args[i]
 		}
 	}
 	if id == "" {
-		writeError(out, "tasks edit needs a task id", "Run `clickup-axi tasks edit <id> --status \"<status>\"`")
+		output.WriteError(out, "tasks edit needs a task id", "Run `clickup-axi tasks edit <id> --status \"<status>\"`")
 		return 2
 	}
 	if !statusSet {
-		writeError(out, "tasks edit needs --status (the only supported change for now)",
+		output.WriteError(out, "tasks edit needs --status (the only supported change for now)",
 			fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"`", id))
 		return 2
 	}
@@ -207,7 +208,7 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		// The only mutation here is a status change, so enrich any rejection
 		// with the list's valid statuses for one-turn recovery.
 		if valid := validStatuses(c, t.List.ID); valid != "" {
-			writeError(out, fmt.Sprintf("status %q not accepted for task %s in list %s\n  valid: %s",
+			output.WriteError(out, fmt.Sprintf("status %q not accepted for task %s in list %s\n  valid: %s",
 				status, displayID(t), t.List.Name, valid),
 				fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` with one of the valid statuses", displayID(t)))
 			return 1
@@ -240,11 +241,11 @@ func usernames(users []clickup.User) string {
 
 func renderAPIError(out io.Writer, err *clickup.APIError) int {
 	if err.Message == clickup.ErrNoAuth {
-		writeError(out, err.Message,
+		output.WriteError(out, err.Message,
 			"Run `clickup-axi auth login` and paste a token from "+tokenURL,
 			"Agents: `clickup-axi auth login < tokenfile` or export CLICKUP_TOKEN from a secret store")
 		return 1
 	}
-	writeError(out, err.Message)
+	output.WriteError(out, err.Message)
 	return 1
 }
