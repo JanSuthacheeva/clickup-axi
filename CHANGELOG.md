@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `tasks comment <id> --text` - add a comment to a task. Ids resolve
+  like everywhere else (internal first, custom fallback); the text is
+  validated as non-empty before any API call.
+
+### Changed
+
+- Slimmed the README down to five sections (what it is, skill-only
+  installation, quickstart, environment variables, auto updates); the
+  manual binary install lives in the skill's Install section only.
+
+### Fixed
+
+- An unknown custom task id no longer reports "ClickUp rejected the
+  token": ClickUp answers 401 for ids outside the token's scope, which
+  now translates to "task not found" when the token itself is valid.
+
 ## [0.1.1] - 2026-07-08
 
 ### Changed
@@ -40,5 +60,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release, plus a passive once-per-24h update notice and healing of
   installed skill copies (`CLICKUP_AXI_NO_UPDATE_CHECK=1` disables).
 
+[Unreleased]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/JanSuthacheeva/clickup-axi/releases/tag/v0.1.0

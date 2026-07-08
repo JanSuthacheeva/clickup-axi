@@ -41,6 +41,11 @@ var surface = []command{
 		skill:   `clickup-axi tasks edit <id> --status "<status>"`,
 	},
 	{
+		usage:   "tasks comment <id>",
+		summary: `Add a comment to a task (--text "<text>")`,
+		skill:   `clickup-axi tasks comment <id> --text "<text>"`,
+	},
+	{
 		usage:   "auth login",
 		summary: "Store a personal API token (read from stdin)",
 	},

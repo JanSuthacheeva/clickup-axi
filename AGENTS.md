@@ -71,7 +71,7 @@ cross-compiles CGO-free binaries for linux/darwin (amd64+arm64) and
 windows/amd64, and publishes them via `gh release create` as raw
 unversioned assets (`clickup-axi_<os>_<arch>`) plus `SHA256SUMS`. Asset
 names stay unversioned so the `releases/latest/download` URLs in the
-README and skill never go stale. The tag (minus the `v`) is injected
+skill never go stale. The tag (minus the `v`) is injected
 into `internal/version.Version` via ldflags; source builds fall back
 to the module build-info version, then `dev`.
 

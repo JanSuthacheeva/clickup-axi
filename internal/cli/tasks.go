@@ -8,7 +8,7 @@ import (
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
-const tasksHelp = `clickup-axi tasks [id | edit <id>] [flags]
+const tasksHelp = `clickup-axi tasks [id | edit <id> | comment <id>] [flags]
 
 Without arguments: your open tasks - everything assigned to you in
 your workspace, including subtasks.
@@ -26,11 +26,15 @@ edit <id> (mutations; "edit" is a reserved word, not an id):
   --status "<status>"  change status; valid statuses are echoed
                        when the status does not match
 
+comment <id> ("comment" is a reserved word, not an id):
+  --text "<text>"  add a comment to the task
+
 examples:
   clickup-axi tasks
   clickup-axi tasks HGAI-2316
   clickup-axi tasks 86ey3tx8m --full
-  clickup-axi tasks edit HGAI-2316 --status "in review"`
+  clickup-axi tasks edit HGAI-2316 --status "in review"
+  clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"`
 
 func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 	if len(args) > 0 {
@@ -40,6 +44,8 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 			return 0
 		case "edit":
 			return cmdTaskEdit(args[1:], c, out)
+		case "comment":
+			return cmdTaskComment(args[1:], c, out)
 		}
 		// Any other argument means a task id (plus detail-view flags).
 		return cmdTaskView(args, c, out)

@@ -1,101 +1,50 @@
 # clickup-axi
 
-> [!WARNING]
-> **STILL IN HEAVY DEVELOPMENT.** The command surface, output format, and
-> flags change without notice. Use at your own risk - especially anything
-> that mutates tasks.
+> [!IMPORTANT]
+> **Still in active development.** Stable to use right now, but the
+> command surface keeps evolving - always update to the newest version
+> (`clickup-axi update`, or agree when the update notice appears).
+> Feature requests are very welcome in the
+> [issues](https://github.com/JanSuthacheeva/clickup-axi/issues).
 
-A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md) design
-principles: token-efficient output, combined operations, structured errors, and
-contextual next-step hints.
+A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md)
+design principles: token-efficient output, structured errors, and
+next-step hints on every command. It covers the flows agents need most:
+listing your open tasks, viewing one task with its comments, changing
+its status, and commenting on it.
 
-Deliberately small for now - it covers the flows agents need most:
-listing your open tasks, viewing one task with its comments, and
-moving it to another status.
+## Installation
 
-## Quick start
-
-If you use an AI agent that supports Agent Skills (Claude Code, Codex,
-opencode, ...), installing the skill is all you need - the agent
-downloads the binary itself on first use:
+Install the agent skill - that is all. Any agent that supports Agent
+Skills (Claude Code, Codex, opencode, ...) downloads the binary itself
+on first use:
 
 ```sh
 npx skills add JanSuthacheeva/clickup-axi --skill clickup-axi -g
 ```
 
-Then, once, in your own terminal (the binary appears in
-`~/.local/bin` after the agent's first use; to get it sooner, see
-Installation below):
+Then authenticate once in your own terminal (the binary appears in
+`~/.local/bin` after the agent's first use):
 
 ```sh
-clickup-axi auth login     # guides you to create a token, hidden paste
+clickup-axi auth login     # guides you to a token, hidden paste
 ```
 
-From there, just mention a task in a conversation ("what's on my
-plate?", "summarize HGAI-2316") - or use the CLI directly:
+## Quickstart
+
+Mention a task in a conversation ("what's on my plate?", "summarize
+HGAI-2316") - or run the CLI directly:
 
 ```sh
+clickup-axi                          # who am I + workspaces
 clickup-axi tasks                    # your open tasks
-clickup-axi tasks 86c2x1a            # one task with newest comments
-clickup-axi tasks edit 86c2x1a --status "in review"
+clickup-axi tasks HGAI-2316          # one task with newest comments
+clickup-axi tasks edit HGAI-2316 --status "in review"
+clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
 ```
 
-## Installation
-
-Installed via the skill above? Nothing to do here - the agent fetches
-the binary on first use. To install the binary yourself, download a
-pre-built one from the
-[latest release](https://github.com/JanSuthacheeva/clickup-axi/releases/latest)
-(linux/darwin on amd64/arm64, windows on amd64; verify with the
-`SHA256SUMS` asset):
-
-```sh
-os="$(uname -s | tr '[:upper:]' '[:lower:]')"
-arch="$(uname -m)"; case "$arch" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; esac
-mkdir -p ~/.local/bin
-curl -fsSL -o ~/.local/bin/clickup-axi \
-  "https://github.com/JanSuthacheeva/clickup-axi/releases/latest/download/clickup-axi_${os}_${arch}"
-chmod +x ~/.local/bin/clickup-axi
-```
-
-or, with a [Go toolchain](https://go.dev/dl/) installed:
-
-```sh
-go install github.com/JanSuthacheeva/clickup-axi/cmd/clickup-axi@latest
-```
-
-(or from a checkout: `go build -o clickup-axi ./cmd/clickup-axi`).
-
-However installed, log in once with `clickup-axi auth login`. It
-validates the token against the API and stores it at
-`~/.config/clickup-axi/token` (mode 600). In a terminal it prompts for a
-hidden paste; for scripted use pipe the token by reference
-(`clickup-axi auth login < tokenfile`, or from a secret manager) - never
-echo a literal token, as the command line lands in shell history and agent
-transcripts. `auth logout` removes the stored token and is a no-op when
-already logged out. A `CLICKUP_TOKEN` environment variable, when set, takes
-precedence over the stored token.
-
-Running `clickup-axi` with no arguments shows live state (user, workspaces) instead
-of help text. `clickup-axi tasks --help` has flags and examples.
-
-## Staying current
-
-`clickup-axi update` replaces the binary in place with the latest
-release (SHA256-verified, atomic; not supported on Windows). At most
-once per day, commands also check for a newer release in the
-background - within a strict 500ms budget, silently skipped on network
-failure - and append a one-line `update: vX.Y.Z available` notice when
-one exists; agents are instructed to relay that as a question rather
-than update on their own. Installed skill copies (e.g.
-`~/.claude/skills/clickup-axi/SKILL.md`) are rewritten from the
-binary's embedded skill whenever they drift, so binary and skill never
-skew; symlinked checkout installs are left alone. Set
-`CLICKUP_AXI_NO_UPDATE_CHECK=1` to disable all of this.
-
-Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`); an id
-is tried as internal first with a custom-id fallback, unless
-`CLICKUP_AXI_CUSTOM_IDS` says otherwise (see below).
+Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`).
+`clickup-axi tasks --help` has flags and examples.
 
 ## Environment variables
 
@@ -105,50 +54,12 @@ is tried as internal first with a custom-id fallback, unless
 | `CLICKUP_AXI_CUSTOM_IDS` | Resolve task ids as custom ids (`HGAI-2316`) only, skipping the internal-id attempt, and display custom ids everywhere. Any value except `0` or `false` enables it. | unset - internal ids tried first, custom fallback |
 | `CLICKUP_AXI_NO_UPDATE_CHECK` | Disable everything update-related: the passive daily check, the `update:` notice, and skill-copy healing. Any non-empty value. | unset - update checks enabled |
 
-## Behavior contract (AXI)
+## Auto updates
 
-- stdout carries structured data and errors; stderr is for diagnostics only
-- exit codes: 0 success (including idempotent no-ops), 1 error, 2 usage error
-- long descriptions are truncated with a total size hint; `--full` lifts it
-- zero results are stated explicitly, never silent
-- no interactive prompts on agent paths; `auth login` prompts for a paste
-  only when stdin is a real terminal, and reads piped stdin otherwise
-
-## Agent Skill
-
-The Agent Skill in `skills/clickup-axi/` teaches agents when and how
-to use this CLI. Install it with the [skills](https://skills.sh)
-installer as shown in the Quick start; the installer only copies the
-skill files, not the binary. The skill's Install section tells the
-agent to download the release binary on first use if it is missing
-(with `go install` as the fallback).
-
-Or, from a local checkout, symlink it and put the binary on PATH:
-
-```sh
-go build -o ~/.local/bin/clickup-axi ./cmd/clickup-axi
-ln -sfn "$(pwd)/skills/clickup-axi" ~/.claude/skills/clickup-axi
-```
-
-Agents then load the skill on their own when a conversation touches
-ClickUp tasks.
-
-The skill file is generated by the binary itself (single source of
-truth): `internal/cli/skill_template.md` carries the prose, the
-command surface table in `internal/cli/surface.go` fills in the
-Commands section. After changing either, run:
-
-```sh
-clickup-axi skill --write   # regenerate skills/clickup-axi/SKILL.md
-clickup-axi skill --check   # exit 1 when the committed skill is stale
-```
-
-## Tests
-
-```sh
-go test ./...
-```
-
-The test suite includes a freshness check that fails while the
-committed skill drifts from the generator; CI runs `skill --check`
-as a named step on top.
+`clickup-axi update` replaces the binary in place with the latest
+release (checksum-verified, atomic). Commands also check for a newer
+release at most once per day and append a one-line
+`update: vX.Y.Z available` notice; agents relay it as a question
+instead of updating on their own. Installed skill copies heal from the
+binary automatically, so binary and skill never skew.
+`CLICKUP_AXI_NO_UPDATE_CHECK=1` disables all of this.

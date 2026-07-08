@@ -27,9 +27,9 @@ func topHelp() string {
 		if c.usage == "" {
 			continue
 		}
-		fmt.Fprintf(&b, "  %-17s%s\n", c.usage, c.summary)
+		fmt.Fprintf(&b, "  %-20s%s\n", c.usage, c.summary)
 		if c.note != "" {
-			fmt.Fprintf(&b, "  %-17s%s\n", "", c.note)
+			fmt.Fprintf(&b, "  %-20s%s\n", "", c.note)
 		}
 	}
 	b.WriteString(`

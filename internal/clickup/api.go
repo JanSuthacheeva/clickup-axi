@@ -16,6 +16,11 @@ func (c *Client) GetComments(taskID string) ([]Comment, *APIError) {
 	return out.Comments, nil
 }
 
+func (c *Client) CreateComment(taskID, text string) *APIError {
+	body := map[string]string{"comment_text": text}
+	return c.do(http.MethodPost, "/task/"+taskID+"/comment", body, nil)
+}
+
 func (c *Client) SetTaskStatus(taskID, status string) *APIError {
 	body := map[string]string{"status": status}
 	return c.do(http.MethodPut, "/task/"+taskID, body, nil)
