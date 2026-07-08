@@ -35,7 +35,7 @@ flags:
   --updated-after  <date>  updated on/after YYYY-MM-DD
   --updated-before <date>  updated before YYYY-MM-DD
   --include-closed         include tasks in the final closed status
-  --limit N                most results to show (default 10; 0 = all)
+  --limit N                most results to show (default 10)
 
 examples:
   clickup-axi search "oauth redirect"
@@ -108,8 +108,8 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 				}
 			case "--limit":
 				n, err := strconv.Atoi(val)
-				if err != nil || n < 0 {
-					output.WriteError(out, fmt.Sprintf("--limit needs a non-negative number, got %q", val))
+				if err != nil || n < 1 {
+					output.WriteError(out, fmt.Sprintf("--limit needs a positive number, got %q", val))
 					return 2
 				}
 				limit = n
@@ -394,7 +394,7 @@ func (s searchScope) line() string {
 
 func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchScope, limit int) {
 	shown := matches
-	if limit > 0 && len(shown) > limit {
+	if len(shown) > limit {
 		shown = shown[:limit]
 	}
 

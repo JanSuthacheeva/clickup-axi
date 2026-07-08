@@ -387,6 +387,17 @@ func TestSearchLimitCapsResults(t *testing.T) {
 	}
 }
 
+func TestSearchLimitRejectsZero(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	out, code := runCLI(t, c, "search", "deploy", "--limit", "0")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--limit needs a positive number") {
+		t.Errorf("output missing limit validation\noutput:\n%s", out)
+	}
+}
+
 func TestSearchNeedsQuery(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "search")
