@@ -13,6 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   like everywhere else (internal first, custom fallback); the text is
   validated as non-empty before any API call.
 
+### Fixed
+
+- An unknown custom task id no longer reports "ClickUp rejected the
+  token": ClickUp answers 401 for ids outside the token's scope, which
+  now translates to "task not found" when the token itself is valid.
+
 ## [0.1.1] - 2026-07-08
 
 ### Changed

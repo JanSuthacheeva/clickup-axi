@@ -78,7 +78,10 @@ func (c *Client) getTask(ref taskRef) (*Task, *APIError) {
 	}
 	var t Task
 	if err := c.do(http.MethodGet, path, nil, &t); err != nil {
-		if err.Status == http.StatusNotFound {
+		// ClickUp answers 401 (not 404) for custom ids outside the
+		// token's scope; the token itself was just proven valid by the
+		// GetTeams call, so report the task, not the auth.
+		if err.Status == http.StatusNotFound || (ref.custom && err.Status == http.StatusUnauthorized) {
 			err.Message = fmt.Sprintf("task %q not found", ref.id)
 		}
 		return nil, err

@@ -279,6 +279,30 @@ func TestTaskCommentResolvesCustomID(t *testing.T) {
 	}
 }
 
+func TestUnknownCustomIDIsNotFoundNotAuthError(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
+	f.mux.HandleFunc("GET /api/v2/team", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"teams": [{"id": "1", "name": "Buzzwoo"}]}`))
+	})
+	// ClickUp answers 401 for custom ids outside the token's scope.
+	f.mux.HandleFunc("GET /api/v2/task/NOPE-1", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"err": "Team not authorized", "ECODE": "OAUTH_027"}`))
+	})
+
+	out, code := runCLI(t, c, "tasks", "NOPE-1")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `task "NOPE-1" not found`) {
+		t.Errorf("output missing not-found message\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "token") {
+		t.Errorf("unknown task id misreported as an auth failure\noutput:\n%s", out)
+	}
+}
+
 func TestTaskCommentMissingTextIsUsageError(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", taskJSON)
