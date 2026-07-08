@@ -151,7 +151,9 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 		IncludeClosed: includeClosed,
 		DateUpdatedGt: dateUpdatedGt,
 		DateUpdatedLt: dateUpdatedLt,
-		// Order by last-updated so a bounded scan covers active tasks.
+		// Order by last-updated (the endpoint defaults to descending, so
+		// reverse stays off) to keep a bounded scan on the most recently
+		// active tasks.
 		OrderBy: "updated",
 	}
 	if status != "" {

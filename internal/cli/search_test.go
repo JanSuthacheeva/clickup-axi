@@ -65,6 +65,9 @@ func TestSearchDefaultsToMeAndExcludesClosed(t *testing.T) {
 		if got := q.Get("order_by"); got != "updated" {
 			t.Errorf("order_by = %q, want updated", got)
 		}
+		if got := q.Get("reverse"); got != "" {
+			t.Errorf("reverse = %q, want unset (endpoint defaults to newest-first)", got)
+		}
 		w.Write([]byte(searchCorpus))
 	})
 

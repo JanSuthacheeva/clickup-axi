@@ -50,7 +50,9 @@ type TaskQuery struct {
 	DateUpdatedGt int64
 	DateUpdatedLt int64
 	// OrderBy names the sort field (e.g. "updated"). A search orders by
-	// "updated" so a bounded scan covers the most recently active tasks.
+	// "updated" so a bounded scan covers the most recently active tasks:
+	// the endpoint sorts each order_by field descending by default, so
+	// leaving Reverse false yields newest-first.
 	OrderBy string
 	Reverse bool
 	Page    int
