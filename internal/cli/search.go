@@ -410,6 +410,9 @@ func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchS
 
 	if len(matches) == 0 {
 		help := []string{}
+		if sc.updatedAfter != "" || sc.updatedBefore != "" {
+			help = append(help, "Human time memory is fuzzy - widen the --updated window or drop one end")
+		}
 		if sc.assignee != "all" {
 			help = append(help, "Ask the user which project (space) the task is in, then retry with --assignee all --space \"<name>\"")
 		}

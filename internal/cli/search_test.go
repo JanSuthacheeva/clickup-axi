@@ -335,6 +335,25 @@ func TestSearchZeroMatchesIsExplicit(t *testing.T) {
 			t.Errorf("output missing %q\noutput:\n%s", want, out)
 		}
 	}
+	if strings.Contains(out, "widen the --updated window") {
+		t.Errorf("date hint shown although no date filter was set\noutput:\n%s", out)
+	}
+}
+
+func TestSearchZeroMatchesWithDateHintsAtWindow(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": []}`))
+	})
+
+	out, code := runCLI(t, c, "search", "kubernetes", "--updated-after", "2026-05-01")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "Human time memory is fuzzy - widen the --updated window or drop one end") {
+		t.Errorf("zero matches with a date filter must hint at the window\noutput:\n%s", out)
+	}
 }
 
 func TestSearchBoundedScanReportsUnscannedTasks(t *testing.T) {

@@ -74,7 +74,11 @@ echoed inline - pick one and retry once.
 `--assignee all`, ask the user which project (space) the task is in -
 people nearly always know - then retry with `--space "<name>"`. Space
 and assignee names resolve case-insensitively; a wrong name fails with
-the valid options inlined, so pick one and retry once.
+the valid options inlined, so pick one and retry once. Time references
+like "two months ago" are fuzzy - use a generous
+`--updated-after`/`--updated-before` window or only one end, and
+remember tasks from past work are often in the final closed status
+(`--include-closed`).
 
 ## Updates
 
