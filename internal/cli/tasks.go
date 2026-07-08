@@ -16,6 +16,8 @@ With an id: that task's details and newest comments. Internal ids
 (86ey3tx8m) and custom ids (HGAI-2316) both work: the id is tried as
 internal first, then as custom. Set CLICKUP_AXI_CUSTOM_IDS=1 to skip
 the internal attempt when your workspace always uses custom ids.
+With more than one workspace visible, set CLICKUP_AXI_WORKSPACE=<id>
+to pin the one to use; run ` + "`clickup-axi`" + ` to list the ids.
 
 view flags (with an id):
   --comments N   comments to include (default 3)

@@ -114,11 +114,33 @@ func cmdHome(c *clickup.Client, out io.Writer) int {
 			fmt.Fprintf(out, "  %s,%s\n", t.ID, output.ToonCell(t.Name))
 		}
 	}
-	output.WriteHelp(out,
+
+	help := []string{
 		"Run `clickup-axi tasks` for your open tasks",
 		"Run `clickup-axi tasks <id>` for a task with its comments",
-		"Run `clickup-axi tasks edit <id> --status \"<status>\"` to change status")
+		"Run `clickup-axi tasks edit <id> --status \"<status>\"` to change status",
+	}
+	if pin := clickup.WorkspaceIDFromEnv(); pin != "" {
+		fmt.Fprintln(out, pinnedWorkspaceLine(teams, pin))
+	} else if len(teams) > 1 {
+		help = append([]string{
+			"Set " + clickup.WorkspaceEnv + "=<id> to pin a workspace (required for `clickup-axi tasks` and custom ids)",
+		}, help...)
+	}
+	output.WriteHelp(out, help...)
 	return 0
+}
+
+// pinnedWorkspaceLine echoes the CLICKUP_AXI_WORKSPACE pin so agents
+// can verify their setup at a glance, flagging a pin the token cannot
+// see instead of failing the whole home view over it.
+func pinnedWorkspaceLine(teams []clickup.Team, pin string) string {
+	for _, t := range teams {
+		if t.ID == pin {
+			return fmt.Sprintf("workspace: %s %s (pinned by %s)", t.ID, t.Name, clickup.WorkspaceEnv)
+		}
+	}
+	return fmt.Sprintf("workspace: %s (pinned by %s, not visible to this token)", pin, clickup.WorkspaceEnv)
 }
 
 func execPath() string {
