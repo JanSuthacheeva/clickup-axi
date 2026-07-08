@@ -9,20 +9,42 @@ A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md) design
 principles: token-efficient output, combined operations, structured errors, and
 contextual next-step hints.
 
-Deliberately small for now - it covers the two flows agents need most:
+Deliberately small for now - it covers the flows agents need most:
+listing your open tasks, viewing one task with its comments, and
+moving it to another status.
+
+## Quick start
+
+If you use an AI agent that supports Agent Skills (Claude Code, Codex,
+opencode, ...), installing the skill is all you need - the agent
+downloads the binary itself on first use:
 
 ```sh
-# your open tasks, then a task by id with its newest comments inline
-clickup-axi tasks
-clickup-axi tasks 86c2x1a
+npx skills add JanSuthacheeva/clickup-axi --skill clickup-axi -g
+```
 
-# change a task's status; an invalid status echoes the list's valid ones
+Then, once, in your own terminal (the binary appears in
+`~/.local/bin` after the agent's first use; to get it sooner, see
+Installation below):
+
+```sh
+clickup-axi auth login     # guides you to create a token, hidden paste
+```
+
+From there, just mention a task in a conversation ("what's on my
+plate?", "summarize HGAI-2316") - or use the CLI directly:
+
+```sh
+clickup-axi tasks                    # your open tasks
+clickup-axi tasks 86c2x1a            # one task with newest comments
 clickup-axi tasks edit 86c2x1a --status "in review"
 ```
 
-## Setup
+## Installation
 
-Download a pre-built binary from the
+Installed via the skill above? Nothing to do here - the agent fetches
+the binary on first use. To install the binary yourself, download a
+pre-built one from the
 [latest release](https://github.com/JanSuthacheeva/clickup-axi/releases/latest)
 (linux/darwin on amd64/arm64, windows on amd64; verify with the
 `SHA256SUMS` asset):
@@ -42,13 +64,10 @@ or, with a [Go toolchain](https://go.dev/dl/) installed:
 go install github.com/JanSuthacheeva/clickup-axi/cmd/clickup-axi@latest
 ```
 
-(or from a checkout: `go build -o clickup-axi ./cmd/clickup-axi`) Then:
+(or from a checkout: `go build -o clickup-axi ./cmd/clickup-axi`).
 
-```sh
-clickup-axi auth login     # guides you to create a token, hidden paste
-```
-
-`auth login` validates the token against the API and stores it at
+However installed, log in once with `clickup-axi auth login`. It
+validates the token against the API and stores it at
 `~/.config/clickup-axi/token` (mode 600). In a terminal it prompts for a
 hidden paste; for scripted use pipe the token by reference
 (`clickup-axi auth login < tokenfile`, or from a secret manager) - never
@@ -88,21 +107,16 @@ the internal attempt.
 - no interactive prompts on agent paths; `auth login` prompts for a paste
   only when stdin is a real terminal, and reads piped stdin otherwise
 
-## Claude Code integration
+## Agent Skill
 
-The Agent Skill in `skills/clickup-axi/` teaches agents when and how to
-use this CLI. Install it with the
-[skills](https://skills.sh) installer:
+The Agent Skill in `skills/clickup-axi/` teaches agents when and how
+to use this CLI. Install it with the [skills](https://skills.sh)
+installer as shown in the Quick start; the installer only copies the
+skill files, not the binary. The skill's Install section tells the
+agent to download the release binary on first use if it is missing
+(with `go install` as the fallback).
 
-```sh
-npx skills add JanSuthacheeva/clickup-axi --skill clickup-axi -g
-```
-
-The installer only copies the skill files, not the binary; the skill's
-Install section tells the agent to download the release binary on
-first use if it is missing (with `go install` as the fallback).
-
-or from a local checkout, symlink it and put the binary on PATH:
+Or, from a local checkout, symlink it and put the binary on PATH:
 
 ```sh
 go build -o ~/.local/bin/clickup-axi ./cmd/clickup-axi
