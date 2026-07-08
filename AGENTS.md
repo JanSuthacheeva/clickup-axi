@@ -22,15 +22,34 @@ first. Every command must keep the contract:
 - raw ClickUp API errors never leak; translate them
 
 The agent skill (`skills/clickup-axi/SKILL.md`) is generated - never
-edit it by hand. When the command surface changes, update `surface.go`
-and `skill_template.md`, run `go run . skill --write`, and update the
-README in the same commit. `go test ./...` and CI fail while the
+edit it by hand. When the command surface changes, update
+`internal/cli/surface.go` and `internal/cli/skill_template.md`, run
+`go run ./cmd/clickup-axi skill --write` from the repo root, and update
+the README in the same commit. `go test ./...` and CI fail while the
 committed skill is stale.
+
+## Layout
+
+The standard Go cmd/internal layout carrying a hexagonal dependency
+rule: imports only point inward, no package imports its caller.
+
+- `cmd/clickup-axi` - composition root; wires the real client and
+  updater (injecting the rendered skill) and calls `cli.Run`
+- `internal/cli` - driving adapter: dispatch, command handlers,
+  rendering, the command surface table, skill generation (the embedded
+  template lives here; `go:embed` paths are package-relative)
+- `internal/clickup` - driven adapter for the ClickUp API: client,
+  types, id resolution, token storage, `APIError` translation
+- `internal/update` - driven adapter for GitHub releases: self-update,
+  passive check, skill healing; never imports `cli`
+- `internal/output` - AXI output conventions (`help[]`, structured
+  errors, TOON cells, truncation), shared by `cli` and `update`
+- `internal/version` - ldflags injection target and fallback resolution
 
 ## Build, test, verify
 
 ```sh
-go build -o clickup-axi .
+go build -o clickup-axi ./cmd/clickup-axi
 gofmt -l . && go vet ./... && go test ./...
 ```
 
@@ -53,15 +72,15 @@ windows/amd64, and publishes them via `gh release create` as raw
 unversioned assets (`clickup-axi_<os>_<arch>`) plus `SHA256SUMS`. Asset
 names stay unversioned so the `releases/latest/download` URLs in the
 README and skill never go stale. The tag (minus the `v`) is injected
-into `main.version` via ldflags; source builds fall back to the module
-build-info version, then `dev`.
+into `internal/version.Version` via ldflags; source builds fall back
+to the module build-info version, then `dev`.
 
 `clickup-axi update` self-replaces the binary from the latest release
 (checksum-verified, atomic rename). A passive once-per-24h check
 (cache: `~/.config/clickup-axi/update-check`, hard 500ms budget,
 silent on failure) appends an `update: vX.Y.Z available` notice to
 command output, and installed skill copies heal from the embedded
-skill after ordinary commands. All of it lives in `update.go`, is
+skill after ordinary commands. All of it lives in `internal/update`, is
 excluded from byte-exact outputs (`skill`, `update`, `--version`,
 `--help`), never nags dev/pseudo-version builds, and is disabled by
 `CLICKUP_AXI_NO_UPDATE_CHECK=1` (the test fakes pass an inert updater
@@ -72,7 +91,7 @@ instead).
 - ClickUp API v2, base `https://api.clickup.com/api/v2`, personal token
   in the `Authorization` header (no Bearer prefix).
 - Task ids come in two kinds: internal (`86ey3tx8m`) and custom
-  (`HGAI-2316`). Resolution policy lives in `getTaskByID`:
+  (`HGAI-2316`). Resolution policy lives in `clickup.GetTaskByID`:
   `CLICKUP_AXI_CUSTOM_IDS` set = custom-only; otherwise internal first,
   custom fallback. When forced, custom ids are also displayed everywhere.
 - After a task is fetched, follow-up API calls use the internal id from
