@@ -57,15 +57,11 @@ func (c *Client) GetTaskByID(id string) (*Task, *APIError) {
 // getTaskByCustomID resolves ids like HGAI-2316, which ClickUp stores
 // uppercase and only matches with the workspace id attached.
 func (c *Client) getTaskByCustomID(id string) (*Task, *APIError) {
-	teams, err := c.GetTeams()
+	team, err := c.SelectTeam()
 	if err != nil {
 		return nil, err
 	}
-	if len(teams) != 1 {
-		return nil, &APIError{Message: fmt.Sprintf(
-			"custom task ids like %q need a single workspace to resolve against, but %d are visible", id, len(teams))}
-	}
-	return c.getTask(taskRef{id: strings.ToUpper(id), custom: true, teamID: teams[0].ID})
+	return c.getTask(taskRef{id: strings.ToUpper(id), custom: true, teamID: team.ID})
 }
 
 func (c *Client) getTask(ref taskRef) (*Task, *APIError) {

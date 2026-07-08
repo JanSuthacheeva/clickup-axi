@@ -46,6 +46,20 @@ asset. With a Go toolchain,
 alternative. If the download fails, do not improvise an install - show
 the user the release page URL and ask them to install it themselves.
 
+## Workspace setup
+
+Run `clickup-axi` (no arguments) before the first task command. If it
+lists several workspaces and no `workspace:` line, ask the user which
+one to use, persist `CLICKUP_AXI_WORKSPACE=<id>` where they prefer
+(shell profile, or the agent's environment config), and export it for
+the current session. One workspace, or a `workspace:` line present:
+no setup needed.
+
+Any command may fail with "N workspaces are visible; set
+CLICKUP_AXI_WORKSPACE to one of: ..." - for example after the user
+joins another workspace. Handle it the same way: ask the user, never
+pick a workspace on your own.
+
 ## Commands
 
 ```sh

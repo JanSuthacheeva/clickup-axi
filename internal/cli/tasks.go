@@ -16,6 +16,8 @@ With an id: that task's details and newest comments. Internal ids
 (86ey3tx8m) and custom ids (HGAI-2316) both work: the id is tried as
 internal first, then as custom. Set CLICKUP_AXI_CUSTOM_IDS=1 to skip
 the internal attempt when your workspace always uses custom ids.
+With more than one workspace visible, set CLICKUP_AXI_WORKSPACE=<id>
+to pin the one to use; run ` + "`clickup-axi`" + ` to list the ids.
 
 view flags (with an id):
   --comments N   comments to include (default 3)
@@ -55,26 +57,17 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 	if err != nil {
 		return renderAPIError(out, err)
 	}
-	teams, err := c.GetTeams()
+	team, err := c.SelectTeam()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
-	switch {
-	case len(teams) == 0:
-		output.WriteError(out, "no workspaces are visible to this token")
-		return 1
-	case len(teams) > 1:
-		output.WriteError(out, fmt.Sprintf("%d workspaces are visible and tasks cannot pick one yet", len(teams)),
-			"Run `clickup-axi` to see the workspaces")
-		return 1
-	}
 
-	tasks, err := c.GetTeamTasks(teams[0].ID, u.ID)
+	tasks, err := c.GetTeamTasks(team.ID, u.ID)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 	if len(tasks) == 0 {
-		fmt.Fprintf(out, "tasks: 0 open tasks assigned to %s in %s\n", u.Username, teams[0].Name)
+		fmt.Fprintf(out, "tasks: 0 open tasks assigned to %s in %s\n", u.Username, team.Name)
 		return 0
 	}
 

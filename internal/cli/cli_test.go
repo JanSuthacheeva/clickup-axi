@@ -1,6 +1,74 @@
 package cli
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+)
+
+func TestHomeSingleWorkspaceNeedsNoPin(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+
+	out, code := runCLI(t, c)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "workspaces[1]{id,name}:\n  9018,Buzzwoo\n") {
+		t.Errorf("output missing workspaces table\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "CLICKUP_AXI_WORKSPACE") {
+		t.Errorf("pin guidance shown despite a single workspace\noutput:\n%s", out)
+	}
+}
+
+func TestHomeMultipleWorkspacesHintAtPin(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", twoTeamsJSON)
+
+	out, code := runCLI(t, c)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "Set CLICKUP_AXI_WORKSPACE=<id> to pin a workspace (needed for `tasks` and custom ids)") {
+		t.Errorf("output missing pin hint\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "workspace: ") {
+		t.Errorf("workspace status line shown despite no pin\noutput:\n%s", out)
+	}
+}
+
+func TestHomeEchoesThePinnedWorkspace(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv(clickup.WorkspaceEnv, "9002")
+	f.meWithTeams(t, 42, "jan", twoTeamsJSON)
+
+	out, code := runCLI(t, c)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "workspace: 9002 Personal (CLICKUP_AXI_WORKSPACE)\n") {
+		t.Errorf("output missing pinned workspace line\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "Set CLICKUP_AXI_WORKSPACE") {
+		t.Errorf("pin hint shown despite an active pin\noutput:\n%s", out)
+	}
+}
+
+func TestHomeFlagsAnInvisiblePin(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv(clickup.WorkspaceEnv, "1234")
+	f.meWithTeams(t, 42, "jan", twoTeamsJSON)
+
+	out, code := runCLI(t, c)
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "workspace: 1234 (CLICKUP_AXI_WORKSPACE, not visible to this token)\n") {
+		t.Errorf("output missing invisible-pin warning\noutput:\n%s", out)
+	}
+}
 
 // TestVersionFallsBackToDev pins the source-build fallback; release
 // binaries override it via -ldflags (asserted by the release workflow

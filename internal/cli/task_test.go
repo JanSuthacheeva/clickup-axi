@@ -22,9 +22,11 @@ type fakeClickUp struct {
 
 func newFakeClickUp(t *testing.T) (*fakeClickUp, *clickup.Client) {
 	t.Helper()
-	// Isolate the custom-id policy from the host environment; tests
-	// that want forced mode set the variable after calling this.
+	// Isolate the custom-id and workspace policies from the host
+	// environment; tests that want forced mode or a pinned workspace
+	// set the variables after calling this.
 	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "")
+	t.Setenv(clickup.WorkspaceEnv, "")
 	f := &fakeClickUp{mux: http.NewServeMux()}
 	srv := httptest.NewServer(f.mux)
 	t.Cleanup(srv.Close)

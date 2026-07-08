@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `CLICKUP_AXI_WORKSPACE` pins the workspace that `tasks` and
+  custom-id resolution operate in, making the CLI usable with tokens
+  that see more than one workspace. The home view echoes the pin and
+  hints at setting it; the generated skill gains a "Workspace setup"
+  section that asks the user which workspace to pin.
+
+### Fixed
+
+- With several visible workspaces, `tasks` and custom-id lookups no
+  longer dead-end: the error now names `CLICKUP_AXI_WORKSPACE` and
+  inlines the visible `id,name` pairs so recovery is one retry.
+
 ## [0.2.0] - 2026-07-08
 
 ### Added

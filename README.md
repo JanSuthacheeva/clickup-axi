@@ -51,6 +51,7 @@ Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`).
 | Variable | Effect | Default |
 |---|---|---|
 | `CLICKUP_TOKEN` | API token to use; takes precedence over the token stored by `auth login`. | unset - the stored token is used |
+| `CLICKUP_AXI_WORKSPACE` | Pin the workspace (id from `clickup-axi`) that `tasks` and custom-id resolution operate in. Required once the token sees more than one workspace; a pin the token cannot see is an error listing the visible ones. | unset - the single visible workspace is used |
 | `CLICKUP_AXI_CUSTOM_IDS` | Resolve task ids as custom ids (`HGAI-2316`) only, skipping the internal-id attempt, and display custom ids everywhere. Any value except `0` or `false` enables it. | unset - internal ids tried first, custom fallback |
 | `CLICKUP_AXI_NO_UPDATE_CHECK` | Disable everything update-related: the passive daily check, the `update:` notice, and skill-copy healing. Any non-empty value. | unset - update checks enabled |
 

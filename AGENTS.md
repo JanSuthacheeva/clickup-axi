@@ -94,6 +94,11 @@ instead).
   (`HGAI-2316`). Resolution policy lives in `clickup.GetTaskByID`:
   `CLICKUP_AXI_CUSTOM_IDS` set = custom-only; otherwise internal first,
   custom fallback. When forced, custom ids are also displayed everywhere.
+- Workspace-scoped calls (`tasks`, custom-id resolution) pick a team
+  through `clickup.SelectTeam`: `CLICKUP_AXI_WORKSPACE` pins one when
+  set (validated against the visible teams); otherwise the single
+  visible team is used, and more than one is an error that inlines the
+  visible `id,name` pairs so the agent can retry in one step.
 - After a task is fetched, follow-up API calls use the internal id from
   the response.
 - Rate limit is roughly 100 requests/minute; the client retries a GET
