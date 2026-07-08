@@ -36,7 +36,7 @@ examples:
   clickup-axi skill --check
   clickup-axi skill --write`
 
-// generateSkill renders the complete SKILL.md content.
+// GenerateSkill renders the complete SKILL.md content.
 func GenerateSkill() string {
 	var b strings.Builder
 	for _, c := range surface {
