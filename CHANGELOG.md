@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.1] - 2026-07-08
 
 ### Added
 
@@ -76,6 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release, plus a passive once-per-24h update notice and healing of
   installed skill copies (`CLICKUP_AXI_NO_UPDATE_CHECK=1` disables).
 
+[0.2.1]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/JanSuthacheeva/clickup-axi/releases/tag/v0.1.0
