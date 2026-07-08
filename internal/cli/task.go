@@ -153,7 +153,9 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 		}
 	}
 
-	help = append(help, fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` to change status", displayID(t)))
+	help = append(help,
+		fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` to change status", displayID(t)),
+		fmt.Sprintf("Run `clickup-axi tasks comment %s --text \"<text>\"` to add a comment", displayID(t)))
 	output.WriteHelp(out, help...)
 }
 
@@ -216,6 +218,62 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		return renderAPIError(out, err)
 	}
 	fmt.Fprintf(out, "task: %s status changed: %s -> %s\n", displayID(t), t.Status.Status, status)
+	return 0
+}
+
+func cmdTaskComment(args []string, c *clickup.Client, out io.Writer) int {
+	var id, text string
+	textSet := false
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--text":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--text needs a value", "Run `clickup-axi tasks comment <id> --text \"<text>\"`")
+				return 2
+			}
+			text = args[i]
+			textSet = true
+		case "--help", "-h":
+			fmt.Fprintln(out, tasksHelp)
+			return 0
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks comment\n  valid: --text", args[i]))
+				return 2
+			}
+			if id != "" {
+				output.WriteError(out, "tasks comment takes exactly one task id (quote the comment text)")
+				return 2
+			}
+			id = args[i]
+		}
+	}
+	if id == "" {
+		output.WriteError(out, "tasks comment needs a task id", "Run `clickup-axi tasks comment <id> --text \"<text>\"`")
+		return 2
+	}
+	if !textSet {
+		output.WriteError(out, "tasks comment needs --text",
+			fmt.Sprintf("Run `clickup-axi tasks comment %s --text \"<text>\"`", id))
+		return 2
+	}
+	if strings.TrimSpace(text) == "" {
+		output.WriteError(out, "comment text must not be empty",
+			fmt.Sprintf("Run `clickup-axi tasks comment %s --text \"<text>\"`", id))
+		return 2
+	}
+
+	t, err := c.GetTaskByID(id)
+	if err != nil {
+		return renderAPIError(out, err)
+	}
+	// The fetch above resolved any custom id; mutate via internal id.
+	if err := c.CreateComment(t.ID, text); err != nil {
+		return renderAPIError(out, err)
+	}
+	fmt.Fprintf(out, "comment: added to task %s\n", displayID(t))
+	output.WriteHelp(out, fmt.Sprintf("Run `clickup-axi tasks %s` to see the task with its comments", displayID(t)))
 	return 0
 }
 

@@ -16,6 +16,7 @@ import (
 type fakeClickUp struct {
 	mux        *http.ServeMux
 	putBodies  []map[string]string
+	postBodies []map[string]string
 	commentGET int
 }
 
@@ -43,6 +44,19 @@ func (f *fakeClickUp) comments(t *testing.T, taskID string, body string) {
 	f.mux.HandleFunc("GET /api/v2/task/"+taskID+"/comment", func(w http.ResponseWriter, r *http.Request) {
 		f.commentGET++
 		w.Write([]byte(body))
+	})
+}
+
+func (f *fakeClickUp) postComment(t *testing.T, taskID string, status int, response string) {
+	t.Helper()
+	f.mux.HandleFunc("POST /api/v2/task/"+taskID+"/comment", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("POST body did not decode: %v", err)
+		}
+		f.postBodies = append(f.postBodies, body)
+		w.WriteHeader(status)
+		w.Write([]byte(response))
 	})
 }
 
@@ -218,6 +232,103 @@ func TestTaskEditInvalidStatusListsValidOnes(t *testing.T) {
 	}
 	if strings.Contains(out, "Status not found") {
 		t.Errorf("raw ClickUp error message leaked to output\noutput:\n%s", out)
+	}
+}
+
+func TestTaskCommentPostsComment(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	f.postComment(t, "abc123", http.StatusOK, `{"id": "458", "hist_id": "26508", "date": 1568036964079}`)
+
+	out, code := runCLI(t, c, "tasks", "comment", "abc123", "--text", "Deployed to staging")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "comment: added to task abc123"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if want := "Run `clickup-axi tasks abc123` to see the task with its comments"; !strings.Contains(out, want) {
+		t.Errorf("output missing help hint %q\noutput:\n%s", want, out)
+	}
+	if len(f.postBodies) != 1 || f.postBodies[0]["comment_text"] != "Deployed to staging" {
+		t.Errorf("POST bodies = %v, want one with comment_text \"Deployed to staging\"", f.postBodies)
+	}
+	if _, ok := f.postBodies[0]["notify_all"]; ok {
+		t.Errorf("POST body carries notify_all, want it omitted")
+	}
+}
+
+func TestTaskCommentResolvesCustomID(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
+	f.mux.HandleFunc("GET /api/v2/team", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"teams": [{"id": "1", "name": "Buzzwoo"}]}`))
+	})
+	f.task(t, "AIKK-99", taskJSON)
+	f.postComment(t, "abc123", http.StatusOK, `{"id": "459"}`)
+
+	out, code := runCLI(t, c, "tasks", "comment", "aikk-99", "--text", "ping")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "comment: added to task AIKK-99"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q (custom id display)\noutput:\n%s", want, out)
+	}
+	if len(f.postBodies) != 1 {
+		t.Errorf("POST bodies = %v, want exactly one on the internal id", f.postBodies)
+	}
+}
+
+func TestTaskCommentMissingTextIsUsageError(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+
+	out, code := runCLI(t, c, "tasks", "comment", "abc123")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "tasks comment needs --text") {
+		t.Errorf("output missing --text requirement\noutput:\n%s", out)
+	}
+	if len(f.postBodies) != 0 {
+		t.Errorf("POST was called despite the usage error")
+	}
+}
+
+func TestTaskCommentEmptyTextIsUsageError(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+
+	out, code := runCLI(t, c, "tasks", "comment", "abc123", "--text", "   ")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "comment text must not be empty") {
+		t.Errorf("output missing empty-text error\noutput:\n%s", out)
+	}
+}
+
+func TestTaskCommentUnquotedTextIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "comment", "abc123", "--text", "two", "words")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "quote the comment text") {
+		t.Errorf("output missing quoting hint\noutput:\n%s", out)
+	}
+}
+
+func TestTaskCommentUnknownFlagIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "comment", "abc123", "--body", "hi")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "valid: --text") {
+		t.Errorf("usage error does not list valid flags inline\noutput:\n%s", out)
 	}
 }
 

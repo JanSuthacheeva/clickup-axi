@@ -10,8 +10,8 @@ principles: token-efficient output, combined operations, structured errors, and
 contextual next-step hints.
 
 Deliberately small for now - it covers the flows agents need most:
-listing your open tasks, viewing one task with its comments, and
-moving it to another status.
+listing your open tasks, viewing one task with its comments, moving
+it to another status, and commenting on it.
 
 ## Quick start
 
@@ -38,6 +38,7 @@ plate?", "summarize HGAI-2316") - or use the CLI directly:
 clickup-axi tasks                    # your open tasks
 clickup-axi tasks 86c2x1a            # one task with newest comments
 clickup-axi tasks edit 86c2x1a --status "in review"
+clickup-axi tasks comment 86c2x1a --text "Deployed to staging"
 ```
 
 ## Installation
