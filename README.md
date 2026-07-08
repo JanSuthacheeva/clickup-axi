@@ -1,9 +1,11 @@
 # clickup-axi
 
-> [!WARNING]
-> **STILL IN HEAVY DEVELOPMENT.** The command surface, output format, and
-> flags change without notice. Use at your own risk - especially anything
-> that mutates tasks.
+> [!IMPORTANT]
+> **Still in active development.** Stable to use right now, but the
+> command surface keeps evolving - always update to the newest version
+> (`clickup-axi update`, or agree when the update notice appears).
+> Feature requests are very welcome in the
+> [issues](https://github.com/JanSuthacheeva/clickup-axi/issues).
 
 A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md)
 design principles: token-efficient output, structured errors, and
