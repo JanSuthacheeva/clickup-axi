@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
+	"github.com/JanSuthacheeva/clickup-axi/internal/version"
 )
 
 const releasesURL = "https://github.com/JanSuthacheeva/clickup-axi/releases"
@@ -167,7 +168,7 @@ func cmdUpdate(args []string, up *updater, out io.Writer) int {
 		return 1
 	}
 	latest := strings.TrimPrefix(tag, "v")
-	running := strings.TrimPrefix(versionString(), "v")
+	running := strings.TrimPrefix(version.String(), "v")
 	if running == latest {
 		fmt.Fprintf(out, "update: already at v%s (no-op)\n", latest)
 		return 0
@@ -260,7 +261,7 @@ func (u *updater) notifyUpdate(out io.Writer) {
 	if u.cachePath == "" {
 		return
 	}
-	running := strings.TrimPrefix(versionString(), "v")
+	running := strings.TrimPrefix(version.String(), "v")
 	if !isReleaseVersion(running) {
 		return // dev and checkout builds are not "outdated"
 	}

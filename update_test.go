@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/version"
 )
 
 // newFakeReleases serves a GitHub-releases-shaped fake: /latest redirects
@@ -45,9 +47,9 @@ func newFakeReleases(t *testing.T, tag string, assets map[string][]byte) string 
 
 func setVersion(t *testing.T, v string) {
 	t.Helper()
-	old := version
-	version = v
-	t.Cleanup(func() { version = old })
+	old := version.Version
+	version.Version = v
+	t.Cleanup(func() { version.Version = old })
 }
 
 // tempExe stands in for the running executable during update tests.
@@ -200,7 +202,7 @@ func TestPassiveCheckSilentOnFailureAndStampsCache(t *testing.T) {
 }
 
 func TestPassiveCheckSuppressedForDevBuilds(t *testing.T) {
-	setVersion(t, "") // versionString falls back to dev/pseudo
+	setVersion(t, "") // version.String falls back to dev/pseudo
 	base := newFakeReleases(t, "v9.9.9", nil)
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")

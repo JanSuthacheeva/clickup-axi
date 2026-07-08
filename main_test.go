@@ -4,7 +4,7 @@ import "testing"
 
 // TestVersionFallsBackToDev pins the source-build fallback; release
 // binaries override it via -ldflags (asserted by the release workflow
-// building with -X main.version).
+// building with -X on internal/version.Version).
 func TestVersionFallsBackToDev(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "--version")
