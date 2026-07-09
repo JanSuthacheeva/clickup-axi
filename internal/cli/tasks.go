@@ -65,14 +65,20 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 // a one-step retry.
 func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	assignee := "me"
+	var space string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--assignee":
+		case "--assignee", "--space":
+			flag := args[i]
 			i++
 			if i >= len(args) {
-				output.WriteError(out, "--assignee needs a value",
-					"Run `clickup-axi tasks --assignee <me|name|id>`")
+				output.WriteError(out, fmt.Sprintf("%s needs a value", flag),
+					fmt.Sprintf("Run `clickup-axi tasks %s <value>`", flag))
 				return 2
+			}
+			if flag == "--space" {
+				space = args[i]
+				continue
 			}
 			// me is a keyword; anything else is resolved later (numeric
 			// id directly, otherwise by member name).
@@ -113,12 +119,29 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		label = u.Username
 	}
 
-	tasks, _, err := c.GetTeamTasksPage(team.ID, clickup.TaskQuery{Assignees: []int64{u.ID}})
+	q := clickup.TaskQuery{Assignees: []int64{u.ID}}
+	where := " in " + team.Name
+	var spaceSuffix string
+	if space != "" {
+		sp, apiErr := c.ResolveSpace(team.ID, space)
+		if apiErr != nil {
+			return renderAPIError(out, apiErr)
+		}
+		q.SpaceIDs = []string{sp.ID}
+		spaceLabel := sp.ID
+		if sp.Name != "" {
+			spaceLabel = fmt.Sprintf("%s %q", sp.ID, sp.Name)
+		}
+		where = " in space " + spaceLabel
+		spaceSuffix = " in space " + spaceLabel
+	}
+
+	tasks, _, err := c.GetTeamTasksPage(team.ID, q)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 	if len(tasks) == 0 {
-		fmt.Fprintf(out, "tasks: 0 open tasks assigned to %s in %s\n", label, team.Name)
+		fmt.Fprintf(out, "tasks: 0 open tasks assigned to %s%s\n", label, where)
 		return 0
 	}
 
@@ -126,7 +149,7 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	if len(tasks) == clickup.TeamTasksPageSize {
 		suffix = " (first page; more may exist)"
 	}
-	fmt.Fprintf(out, "tasks: %d open task%s assigned to %s%s\n", len(tasks), pluralS(len(tasks)), label, suffix)
+	fmt.Fprintf(out, "tasks: %d open task%s assigned to %s%s%s\n", len(tasks), pluralS(len(tasks)), label, spaceSuffix, suffix)
 	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
 	for i := range tasks {
 		t := &tasks[i]

@@ -98,6 +98,77 @@ func TestTasksFullPageHintsAtMore(t *testing.T) {
 	}
 }
 
+func (f *fakeClickUp) spaces(t *testing.T, teamID, spacesJSON string) {
+	t.Helper()
+	f.mux.HandleFunc("GET /api/v2/team/"+teamID+"/space", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(spacesJSON))
+	})
+}
+
+const twoSpacesJSON = `{"spaces": [{"id": "90121", "name": "Webshop"}, {"id": "90122", "name": "Holy Grail"}]}`
+
+func TestTasksSpaceByNameFiltersTheListing(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.spaces(t, "9018", twoSpacesJSON)
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("space_ids[]"); got != "90121" {
+			t.Errorf("space_ids[] = %q, want %q", got, "90121")
+		}
+		if got := r.URL.Query().Get("assignees[]"); got != "42" {
+			t.Errorf("assignees[] = %q, want %q", got, "42")
+		}
+		w.Write([]byte(`{"tasks": [
+			{"id": "86ey1", "name": "Checkout QA", "status": {"status": "to do"}, "due_date": null},
+			{"id": "86ey2", "name": "Restock banner", "status": {"status": "to do"}, "due_date": null}
+		]}`))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--space", "webshop")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `tasks: 2 open tasks assigned to jan in space 90121 "Webshop"`) {
+		t.Errorf("header missing the space label\noutput:\n%s", out)
+	}
+}
+
+func TestTasksSpaceEmptyStateNamesTheSpace(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.spaces(t, "9018", twoSpacesJSON)
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": []}`))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--space", "holy")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `tasks: 0 open tasks assigned to jan in space 90122 "Holy Grail"`) {
+		t.Errorf("empty state missing the space label\noutput:\n%s", out)
+	}
+}
+
+func TestTasksSpaceNoMatchInlinesSpaces(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.spaces(t, "9018", twoSpacesJSON)
+
+	out, code := runCLI(t, c, "tasks", "--space", "shopware")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`space "shopware" matches none of the workspace's 2 spaces`,
+		`90121 "Webshop"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
 const membersTeamJSON = `{"teams": [{"id": "9018", "name": "Buzzwoo", "members": [
 	{"user": {"id": 42, "username": "jan", "email": "jan@buzzwoo.de"}},
 	{"user": {"id": 189, "username": "Ting Nguyen"}},
