@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
@@ -49,25 +50,75 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 		case "comment":
 			return cmdTaskComment(args[1:], c, out)
 		}
-		// Any other argument means a task id (plus detail-view flags).
-		return cmdTaskView(args, c, out)
+		if !strings.HasPrefix(args[0], "-") {
+			// A non-flag first argument is a task id (plus view flags);
+			// a flag first means the list form with filters.
+			return cmdTaskView(args, c, out)
+		}
+	}
+	return cmdTasksList(args, c, out)
+}
+
+// cmdTasksList renders the workspace's open tasks: the user's own by
+// default, a teammate's via --assignee. The same resolver as search
+// backs the flag, so names work and every miss inlines candidates for
+// a one-step retry.
+func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
+	assignee := "me"
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--assignee":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--assignee needs a value",
+					"Run `clickup-axi tasks --assignee <me|name|id>`")
+				return 2
+			}
+			// me is a keyword; anything else is resolved later (numeric
+			// id directly, otherwise by member name).
+			if strings.EqualFold(args[i], "me") {
+				assignee = "me"
+			} else {
+				assignee = args[i]
+			}
+		case "--comments", "--no-comments", "--full":
+			output.WriteError(out, fmt.Sprintf("%s needs a task id", args[i]),
+				fmt.Sprintf("Run `clickup-axi tasks <id> %s`", args[i]))
+			return 2
+		case "--help", "-h":
+			fmt.Fprintln(out, tasksHelp)
+			return 0
+		default:
+			if strings.HasPrefix(args[i], "-") {
+				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks\n  valid: --assignee, --space (listing) or --comments N, --no-comments, --full (with a task id)", args[i]))
+				return 2
+			}
+			output.WriteError(out, fmt.Sprintf("unexpected argument %q: a task id does not combine with listing flags", args[i]),
+				fmt.Sprintf("Run `clickup-axi tasks %s` to view that task", args[i]))
+			return 2
+		}
 	}
 
-	u, err := c.GetUser()
-	if err != nil {
-		return renderAPIError(out, err)
-	}
 	team, err := c.SelectTeam()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 
-	tasks, err := c.GetTeamTasks(team.ID, u.ID)
+	u, err := resolveAssignee(assignee, team, c)
+	if err != nil {
+		return renderAPIError(out, err)
+	}
+	label := assignee
+	if u.Username != "" {
+		label = u.Username
+	}
+
+	tasks, _, err := c.GetTeamTasksPage(team.ID, clickup.TaskQuery{Assignees: []int64{u.ID}})
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 	if len(tasks) == 0 {
-		fmt.Fprintf(out, "tasks: 0 open tasks assigned to %s in %s\n", u.Username, team.Name)
+		fmt.Fprintf(out, "tasks: 0 open tasks assigned to %s in %s\n", label, team.Name)
 		return 0
 	}
 
@@ -75,7 +126,7 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 	if len(tasks) == clickup.TeamTasksPageSize {
 		suffix = " (first page; more may exist)"
 	}
-	fmt.Fprintf(out, "tasks: %d open tasks assigned to %s%s\n", len(tasks), u.Username, suffix)
+	fmt.Fprintf(out, "tasks: %d open task%s assigned to %s%s\n", len(tasks), pluralS(len(tasks)), label, suffix)
 	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
 	for i := range tasks {
 		t := &tasks[i]
@@ -83,4 +134,11 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 	}
 	output.WriteHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
 	return 0
+}
+
+func pluralS(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }

@@ -98,13 +98,124 @@ func TestTasksFullPageHintsAtMore(t *testing.T) {
 	}
 }
 
+const membersTeamJSON = `{"teams": [{"id": "9018", "name": "Buzzwoo", "members": [
+	{"user": {"id": 42, "username": "jan", "email": "jan@buzzwoo.de"}},
+	{"user": {"id": 189, "username": "Ting Nguyen"}},
+	{"user": {"id": 190, "username": "Tinh Tran"}}
+]}]}`
+
+func TestTasksAssigneeByNameListsTheirTasks(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("assignees[]"); got != "189" {
+			t.Errorf("assignees[] = %q, want %q", got, "189")
+		}
+		w.Write([]byte(`{"tasks": [
+			{"id": "86ey9", "name": "Translate homepage", "status": {"status": "in progress"}, "due_date": null}
+		]}`))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--assignee", "ting")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"tasks: 1 open task assigned to Ting Nguyen",
+		"tasks[1]{id,title,status,due}:",
+		"86ey9,Translate homepage,in progress,",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+func TestTasksAssigneeNumericIDSkipsResolution(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("assignees[]"); got != "189" {
+			t.Errorf("assignees[] = %q, want %q", got, "189")
+		}
+		w.Write([]byte(`{"tasks": []}`))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--assignee", "189")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "tasks: 0 open tasks assigned to 189 in Buzzwoo") {
+		t.Errorf("output missing id-labeled empty state\noutput:\n%s", out)
+	}
+}
+
+func TestTasksAssigneeNoMatchInlinesMembers(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+
+	out, code := runCLI(t, c, "tasks", "--assignee", "zoe")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`assignee "zoe" matches none of the members of Buzzwoo`,
+		`189 "Ting Nguyen"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+func TestTasksAssigneeAmbiguousInlinesCandidates(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+
+	out, code := runCLI(t, c, "tasks", "--assignee", "tin")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`assignee "tin" is ambiguous`,
+		`189 "Ting Nguyen"`,
+		`190 "Tinh Tran"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+func TestTasksViewFlagWithoutIDGuides(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	out, code := runCLI(t, c, "tasks", "--full")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--full needs a task id") {
+		t.Errorf("misplaced view flag not guided to the id form\noutput:\n%s", out)
+	}
+}
+
+func TestTasksListRejectsMixedIDAndFlags(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	out, code := runCLI(t, c, "tasks", "--assignee", "ting", "HGAI-1")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "Run `clickup-axi tasks HGAI-1` to view that task") {
+		t.Errorf("mixed id+flags not rejected with a recovery hint\noutput:\n%s", out)
+	}
+}
+
 func TestTasksUnknownFlagIsUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "tasks", "--mine")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "valid: --comments N, --no-comments, --full") {
+	if !strings.Contains(out, "valid: --assignee, --space (listing) or --comments N, --no-comments, --full (with a task id)") {
 		t.Errorf("usage error does not list valid flags inline\noutput:\n%s", out)
 	}
 }
