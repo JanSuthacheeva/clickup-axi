@@ -63,15 +63,15 @@ pick a workspace on your own.
 ## Commands
 
 ```sh
-clickup-axi                                # who am I + workspaces (auth check)
-clickup-axi tasks                          # open tasks assigned to the user
-clickup-axi tasks <id>                     # one task: metadata, description, newest comments
-clickup-axi tasks <id> --full              # complete description and all fetched comments
-clickup-axi search "<query>"               # find YOUR tasks by words in the title or description
-clickup-axi search "<query>" --assignee all --space "<space>"# widen beyond your tasks; space and assignee resolve by name
+clickup-axi                                                   # who am I + workspaces (auth check)
+clickup-axi tasks                                             # open tasks assigned to the user
+clickup-axi tasks <id>                                        # one task: metadata, description, newest comments
+clickup-axi tasks <id> --full                                 # complete description and all fetched comments
+clickup-axi search "<query>"                                  # find YOUR tasks by words in the title or description
+clickup-axi search "<query>" --assignee all --space "<space>" # widen beyond your tasks; space and assignee resolve by name
 clickup-axi tasks edit <id> --status "<status>"
 clickup-axi tasks comment <id> --text "<text>"
-clickup-axi update                         # self-update to the latest release (only after user consent)
+clickup-axi update                                            # self-update to the latest release (only after user consent)
 ```
 
 Task ids may be custom (HGAI-2316, case-insensitive) or internal
