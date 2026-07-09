@@ -214,21 +214,41 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		return renderAPIError(out, err)
 	}
 
-	// Resolve assignee tokens against the workspace members. Name
-	// resolution reuses search's resolveAssignee (me / id / member name),
-	// so a miss or ambiguity returns the inline-candidates error.
+	// Pre-flight validation: every field is checked before anything is
+	// written, so a single bad field is reported alongside the others
+	// (not one at a time) and never leaves a half-applied task. Assignee
+	// names resolve against the workspace; the status is checked against
+	// the list. Only once all fields are known-good does the atomic PUT
+	// run. When the edit grows more fields, each adds its check here.
+	var fieldErrs []string
+
 	var addUsers, remUsers []clickup.User
 	if len(addTokens) > 0 || len(remTokens) > 0 {
 		team, terr := c.SelectTeam()
 		if terr != nil {
 			return renderAPIError(out, terr)
 		}
-		if addUsers, err = resolveAssignees(addTokens, team, c); err != nil {
-			return renderAPIError(out, err)
+		var rerr *clickup.APIError
+		if addUsers, rerr = resolveAssignees(addTokens, team, c); rerr != nil {
+			fieldErrs = append(fieldErrs, rerr.Message)
 		}
-		if remUsers, err = resolveAssignees(remTokens, team, c); err != nil {
-			return renderAPIError(out, err)
+		if remUsers, rerr = resolveAssignees(remTokens, team, c); rerr != nil {
+			fieldErrs = append(fieldErrs, rerr.Message)
 		}
+	}
+
+	statusChanges := statusSet && !strings.EqualFold(t.Status.Status, status)
+	if statusChanges {
+		// A wrong status is caught here rather than after a failed PUT, so
+		// it no longer hides behind (or gets hidden by) an assignee error.
+		if valid := listStatuses(c, t.List.ID); len(valid) > 0 && !containsFold(valid, status) {
+			fieldErrs = append(fieldErrs, fmt.Sprintf("status %q not accepted in list %s\n  valid: %s",
+				status, t.List.Name, strings.Join(valid, ", ")))
+		}
+	}
+
+	if len(fieldErrs) > 0 {
+		return renderFieldErrors(out, displayID(t), fieldErrs)
 	}
 
 	// A person named in both lists is a self-contradictory request.
@@ -270,7 +290,6 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		remNames = append(remNames, assigneeName(u))
 	}
 
-	statusChanges := statusSet && !strings.EqualFold(t.Status.Status, status)
 	assigneeChanges := len(add) > 0 || len(rem) > 0
 	if !statusChanges && !assigneeChanges {
 		var reasons []string
@@ -286,8 +305,9 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 
 	// The fetch above resolved any custom id; mutate via internal id.
 	// Status and assignee changes go out in one PUT so they commit
-	// atomically - no partial-mutation window where the status sticks
-	// but the assignee update fails.
+	// atomically - no partial-mutation window. Every field was validated
+	// pre-flight, so a failure here is a workflow restriction (e.g. a
+	// forbidden status transition), which gets the raw translated error.
 	edit := clickup.TaskEdit{}
 	if statusChanges {
 		edit.Status = status
@@ -297,18 +317,6 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		edit.RemAssignees = rem
 	}
 	if err := c.UpdateTask(t.ID, edit); err != nil {
-		// Enrich a status rejection with the list's valid statuses, but
-		// only when the requested status is genuinely not one of them -
-		// otherwise the failure is something else and gets the raw
-		// (translated) error rather than a misattributed status message.
-		if statusChanges {
-			if valid := listStatuses(c, t.List.ID); len(valid) > 0 && !containsFold(valid, status) {
-				output.WriteError(out, fmt.Sprintf("status %q not accepted for task %s in list %s\n  valid: %s",
-					status, displayID(t), t.List.Name, strings.Join(valid, ", ")),
-					fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` with one of the valid statuses", displayID(t)))
-				return 1
-			}
-		}
 		return renderAPIError(out, err)
 	}
 	if statusChanges {
@@ -319,6 +327,28 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	}
 	output.WriteHelp(out, fmt.Sprintf("Run `clickup-axi tasks %s` to see the task", displayID(t)))
 	return 0
+}
+
+// renderFieldErrors reports every field that failed pre-flight validation
+// in one message, so the agent fixes them all before a single retry. The
+// edit is atomic, so nothing was changed while any field was invalid.
+func renderFieldErrors(out io.Writer, id string, errs []string) int {
+	if len(errs) == 1 {
+		output.WriteError(out, errs[0],
+			fmt.Sprintf("Fix the value above, then rerun `clickup-axi tasks edit %s ...`", id))
+		return 1
+	}
+	// Indent each error's continuation lines (e.g. a status "valid:" list)
+	// so they nest under their bullet instead of dedenting to the margin.
+	items := make([]string, len(errs))
+	for i, e := range errs {
+		items[i] = strings.ReplaceAll(e, "\n", "\n  ")
+	}
+	msg := fmt.Sprintf("%d fields cannot be applied (nothing was changed):\n  - %s",
+		len(items), strings.Join(items, "\n  - "))
+	output.WriteError(out, msg,
+		fmt.Sprintf("Fix all the values above, then rerun `clickup-axi tasks edit %s ...` once", id))
+	return 1
 }
 
 // splitAssignees turns a --assignee/--unassign value into tokens: a

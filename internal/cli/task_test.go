@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -76,6 +77,20 @@ func (f *fakeClickUp) put(t *testing.T, taskID string, status int, response stri
 		f.putBodies = append(f.putBodies, body)
 		w.WriteHeader(status)
 		w.Write([]byte(response))
+	})
+}
+
+// list registers GET /list/{id} so a status edit can be pre-validated
+// against the list's statuses.
+func (f *fakeClickUp) list(t *testing.T, id, name string, statuses ...string) {
+	t.Helper()
+	items := make([]string, len(statuses))
+	for i, s := range statuses {
+		items[i] = fmt.Sprintf(`{"status": %q}`, s)
+	}
+	body := fmt.Sprintf(`{"id": %q, "name": %q, "statuses": [%s]}`, id, name, strings.Join(items, ", "))
+	f.mux.HandleFunc("GET /api/v2/list/"+id, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(body))
 	})
 }
 
@@ -188,6 +203,7 @@ func TestTaskViewNoCommentsSkipsFetch(t *testing.T) {
 func TestTaskEditChangesStatus(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", taskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
 	f.put(t, "abc123", http.StatusOK, `{}`)
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review")
@@ -255,12 +271,8 @@ func TestTaskEditCombinedFailureWithValidStatusNotMisattributed(t *testing.T) {
 func TestTaskEditInvalidStatusListsValidOnes(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", taskJSON)
-	f.put(t, "abc123", http.StatusBadRequest, `{"err": "Status not found", "ECODE": "CRTSK_001"}`)
-	f.mux.HandleFunc("GET /api/v2/list/901234", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"id": "901234", "name": "Sprint 14", "statuses": [
-			{"status": "to do"}, {"status": "in progress"}, {"status": "in review"}, {"status": "done"}
-		]}`))
-	})
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	// No PUT handler: an invalid status is caught pre-flight, before any write.
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "qa")
 	if code != 1 {
@@ -269,8 +281,35 @@ func TestTaskEditInvalidStatusListsValidOnes(t *testing.T) {
 	if want := "valid: to do, in progress, in review, done"; !strings.Contains(out, want) {
 		t.Errorf("output missing %q\noutput:\n%s", want, out)
 	}
-	if strings.Contains(out, "Status not found") {
-		t.Errorf("raw ClickUp error message leaked to output\noutput:\n%s", out)
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite an invalid status: %v", f.putRaw)
+	}
+}
+
+// A bad status and a bad assignee in the same call are reported together,
+// so the agent fixes both before one retry - neither hides the other, and
+// nothing is written while any field is invalid.
+func TestTaskEditAggregatesInvalidStatusAndAssignee(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	// No PUT handler: nothing must be written when any field is invalid.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "qa", "--assignee", "zoe")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"valid: to do, in progress, in review, done",
+		`assignee "zoe" matches none of the members`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("aggregated output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("no PUT should happen when a field is invalid: %v", f.putRaw)
 	}
 }
 
@@ -380,6 +419,7 @@ func TestTaskEditCombinesStatusAndAssignee(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", editTaskJSON)
 	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
 	f.put(t, "abc123", http.StatusOK, `{}`)
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review", "--assignee", "ting")
