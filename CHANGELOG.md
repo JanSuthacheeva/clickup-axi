@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-07-09
+
 ### Added
 
 - `tasks edit <id> --assignee <who>` / `--unassign <who>` change a task's
@@ -20,6 +22,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   case-insensitively like `search`. `tasks --space <name|id>` narrows the
   listing to one space (project). `--assignee all` requires `--space` as a
   bound, since a workspace-wide scan is otherwise unbounded.
+
+## [0.3.0] - 2026-07-09
+
+### Added
+
+- `search <query>` finds tasks by title or description text. ClickUp's
+  API has no text-search endpoint, so it filters tasks server-side
+  (paged and bounded) and ranks matches locally: title above
+  description, with every query word required to match. To stay bounded
+  and relevant it searches only your own tasks by default and hides the
+  final `closed` status; each result prints a `scope:` line stating
+  exactly what was searched. `--assignee all` widens the search and then
+  requires at least one bounding filter (such as `--status`, `--space`,
+  or `--updated-after`).
+- Spaces and assignees resolve by name, not just id, across `search`
+  (`--space`, `--assignee`): an exact case-insensitive name/email match,
+  then a unique substring, with every miss or ambiguity inlining the
+  candidate `id,name` pairs for a one-step retry.
 
 ## [0.2.1] - 2026-07-08
 
