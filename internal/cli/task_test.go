@@ -211,11 +211,44 @@ func TestTaskEditSameStatusIsNoOp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (idempotent no-op)\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "no changes") {
-		t.Errorf("output missing no-op acknowledgement\noutput:\n%s", out)
+	if want := `no changes (already has status "in progress")`; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if strings.Contains(out, "assign") {
+		t.Errorf("status-only no-op mentions assignees\noutput:\n%s", out)
 	}
 	if len(f.putBodies) != 0 {
 		t.Errorf("PUT was called for a no-op status change")
+	}
+}
+
+// A combined status+assignee edit that fails at the API must not
+// misattribute the failure to the status when the status is valid: the
+// single PUT is atomic, so nothing partially committed, and a valid
+// status gets the raw translated error instead of a "not accepted" list.
+func TestTaskEditCombinedFailureWithValidStatusNotMisattributed(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.put(t, "abc123", http.StatusBadRequest, `{"err": "Assignee not found", "ECODE": "CRTSK_002"}`)
+	f.mux.HandleFunc("GET /api/v2/list/901234", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id": "901234", "name": "Sprint 14", "statuses": [
+			{"status": "to do"}, {"status": "in progress"}, {"status": "in review"}, {"status": "done"}
+		]}`))
+	})
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review", "--assignee", "ting")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if strings.Contains(out, "not accepted") {
+		t.Errorf("valid status misattributed as rejected\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "status changed") {
+		t.Errorf("no field should be reported as changed on a failed atomic PUT\noutput:\n%s", out)
+	}
+	if len(f.putBodies) != 1 {
+		t.Errorf("want 1 atomic PUT, got %d: %v", len(f.putBodies), f.putRaw)
 	}
 }
 
@@ -361,8 +394,14 @@ func TestTaskEditCombinesStatusAndAssignee(t *testing.T) {
 			t.Errorf("output missing %q\noutput:\n%s", want, out)
 		}
 	}
-	if len(f.putBodies) != 2 {
-		t.Errorf("want 2 PUTs (status + assignees), got %d: %v", len(f.putBodies), f.putRaw)
+	if len(f.putBodies) != 1 {
+		t.Fatalf("want 1 atomic PUT (status + assignees), got %d: %v", len(f.putBodies), f.putRaw)
+	}
+	if f.putBodies[0]["status"] != "in review" {
+		t.Errorf("PUT body = %v, want status \"in review\"", f.putBodies[0])
+	}
+	if !strings.Contains(f.putRaw[0], `"add":[189]`) {
+		t.Errorf("PUT raw = %v, want assignees.add [189]", f.putRaw)
 	}
 }
 

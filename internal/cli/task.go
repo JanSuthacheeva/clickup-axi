@@ -273,28 +273,48 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	statusChanges := statusSet && !strings.EqualFold(t.Status.Status, status)
 	assigneeChanges := len(add) > 0 || len(rem) > 0
 	if !statusChanges && !assigneeChanges {
-		fmt.Fprintf(out, "task: %s no changes (already assigned / same status)\n", displayID(t))
+		var reasons []string
+		if statusSet {
+			reasons = append(reasons, fmt.Sprintf("already has status %q", t.Status.Status))
+		}
+		if len(addTokens) > 0 || len(remTokens) > 0 {
+			reasons = append(reasons, "assignees already as requested")
+		}
+		fmt.Fprintf(out, "task: %s no changes (%s)\n", displayID(t), strings.Join(reasons, ", "))
 		return 0
 	}
 
 	// The fetch above resolved any custom id; mutate via internal id.
+	// Status and assignee changes go out in one PUT so they commit
+	// atomically - no partial-mutation window where the status sticks
+	// but the assignee update fails.
+	edit := clickup.TaskEdit{}
 	if statusChanges {
-		if serr := c.SetTaskStatus(t.ID, status); serr != nil {
-			// Enrich a status rejection with the list's valid statuses.
-			if valid := validStatuses(c, t.List.ID); valid != "" {
+		edit.Status = status
+	}
+	if assigneeChanges {
+		edit.AddAssignees = add
+		edit.RemAssignees = rem
+	}
+	if err := c.UpdateTask(t.ID, edit); err != nil {
+		// Enrich a status rejection with the list's valid statuses, but
+		// only when the requested status is genuinely not one of them -
+		// otherwise the failure is something else and gets the raw
+		// (translated) error rather than a misattributed status message.
+		if statusChanges {
+			if valid := listStatuses(c, t.List.ID); len(valid) > 0 && !containsFold(valid, status) {
 				output.WriteError(out, fmt.Sprintf("status %q not accepted for task %s in list %s\n  valid: %s",
-					status, displayID(t), t.List.Name, valid),
+					status, displayID(t), t.List.Name, strings.Join(valid, ", ")),
 					fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` with one of the valid statuses", displayID(t)))
 				return 1
 			}
-			return renderAPIError(out, serr)
 		}
+		return renderAPIError(out, err)
+	}
+	if statusChanges {
 		fmt.Fprintf(out, "task: %s status changed: %s -> %s\n", displayID(t), t.Status.Status, status)
 	}
 	if assigneeChanges {
-		if aerr := c.UpdateTaskAssignees(t.ID, add, rem); aerr != nil {
-			return renderAPIError(out, aerr)
-		}
 		fmt.Fprintf(out, "task: %s assignees%s%s\n", displayID(t), signedList("+", addNames), signedList("-", remNames))
 	}
 	output.WriteHelp(out, fmt.Sprintf("Run `clickup-axi tasks %s` to see the task", displayID(t)))
@@ -403,16 +423,25 @@ func cmdTaskComment(args []string, c *clickup.Client, out io.Writer) int {
 	return 0
 }
 
-func validStatuses(c *clickup.Client, listID string) string {
+func containsFold(names []string, want string) bool {
+	for _, n := range names {
+		if strings.EqualFold(n, want) {
+			return true
+		}
+	}
+	return false
+}
+
+func listStatuses(c *clickup.Client, listID string) []string {
 	l, err := c.GetList(listID)
 	if err != nil {
-		return ""
+		return nil
 	}
 	names := make([]string, 0, len(l.Statuses))
 	for _, s := range l.Statuses {
 		names = append(names, s.Status)
 	}
-	return strings.Join(names, ", ")
+	return names
 }
 
 // taskDescription is the human-readable body of a task: ClickUp's plain

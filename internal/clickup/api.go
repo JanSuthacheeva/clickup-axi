@@ -21,19 +21,37 @@ func (c *Client) CreateComment(taskID, text string) *APIError {
 	return c.do(http.MethodPost, "/task/"+taskID+"/comment", body, nil)
 }
 
-func (c *Client) SetTaskStatus(taskID, status string) *APIError {
-	body := map[string]string{"status": status}
-	return c.do(http.MethodPut, "/task/"+taskID, body, nil)
+// TaskEdit is a mutation of a task's fields. A zero Status leaves the
+// status unchanged; empty AddAssignees/RemAssignees leave assignees
+// untouched. It maps to a single PUT /task/{id} so status and assignee
+// changes commit atomically in one request.
+type TaskEdit struct {
+	Status       string
+	AddAssignees []int64
+	RemAssignees []int64
 }
 
-func (c *Client) UpdateTaskAssignees(taskID string, add, rem []int64) *APIError {
-	if add == nil {
-		add = []int64{}
+// HasChanges reports whether the edit carries any field to send.
+func (e TaskEdit) HasChanges() bool {
+	return e.Status != "" || len(e.AddAssignees) > 0 || len(e.RemAssignees) > 0
+}
+
+func (c *Client) UpdateTask(taskID string, edit TaskEdit) *APIError {
+	body := map[string]any{}
+	if edit.Status != "" {
+		body["status"] = edit.Status
 	}
-	if rem == nil {
-		rem = []int64{}
+	if len(edit.AddAssignees) > 0 || len(edit.RemAssignees) > 0 {
+		add := edit.AddAssignees
+		if add == nil {
+			add = []int64{}
+		}
+		rem := edit.RemAssignees
+		if rem == nil {
+			rem = []int64{}
+		}
+		body["assignees"] = map[string][]int64{"add": add, "rem": rem}
 	}
-	body := map[string]any{"assignees": map[string][]int64{"add": add, "rem": rem}}
 	return c.do(http.MethodPut, "/task/"+taskID, body, nil)
 }
 
