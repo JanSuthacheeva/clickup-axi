@@ -11,14 +11,21 @@ import (
 
 const tasksHelp = `clickup-axi tasks [id | edit <id> | comment <id>] [flags]
 
-Without arguments: your open tasks - everything assigned to you in
-your workspace, including subtasks.
+Without arguments: open tasks assigned to you in your workspace,
+including subtasks. --assignee lists a teammate's open tasks instead;
+--space narrows the listing to one space (project).
 With an id: that task's details and newest comments. Internal ids
 (86ey3tx8m) and custom ids (HGAI-2316) both work: the id is tried as
 internal first, then as custom. Set CLICKUP_AXI_CUSTOM_IDS=1 to skip
 the internal attempt when your workspace always uses custom ids.
 With more than one workspace visible, set CLICKUP_AXI_WORKSPACE=<id>
 to pin the one to use; run ` + "`clickup-axi`" + ` to list the ids.
+
+list flags (without an id):
+  --assignee <who>   me (default), all, a member's name, or an id;
+                     names resolve case-insensitively; all needs --space
+  --space <name|id>  only tasks in this space (project); names
+                     resolve case-insensitively
 
 view flags (with an id):
   --comments N   comments to include (default 3)
@@ -34,6 +41,8 @@ comment <id> ("comment" is a reserved word, not an id):
 
 examples:
   clickup-axi tasks
+  clickup-axi tasks --assignee ting
+  clickup-axi tasks --assignee ting --space "Webshop"
   clickup-axi tasks HGAI-2316
   clickup-axi tasks 86ey3tx8m --full
   clickup-axi tasks edit HGAI-2316 --status "in review"
@@ -60,9 +69,9 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 }
 
 // cmdTasksList renders the workspace's open tasks: the user's own by
-// default, a teammate's via --assignee. The same resolver as search
-// backs the flag, so names work and every miss inlines candidates for
-// a one-step retry.
+// default, a teammate's via --assignee, one space via --space. The same
+// resolvers as search back both flags, so names work and every miss
+// inlines candidates for a one-step retry.
 func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	assignee := "me"
 	var space string

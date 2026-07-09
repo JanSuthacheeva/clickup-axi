@@ -111,7 +111,9 @@ instead).
   `searchMaxPages`) and ranks matches locally in `rankTasks` (title >
   id > description, AND across query words). It defaults to
   `assignee=me` and excludes the final closed status; `--assignee all`
-  requires at least one bounding filter.
+  requires at least one bounding filter. `tasks` (the list form) shares
+  `--assignee`/`--space` with the same resolvers, and its
+  `--assignee all` requires `--space` as the bound.
 - After a task is fetched, follow-up API calls use the internal id from
   the response.
 - Rate limit is roughly 100 requests/minute; the client retries a GET
