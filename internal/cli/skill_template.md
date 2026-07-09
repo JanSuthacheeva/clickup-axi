@@ -70,15 +70,15 @@ Task ids may be custom (HGAI-2316, case-insensitive) or internal
 (86ey3tx8m). An invalid status fails with the list's valid statuses
 echoed inline - pick one and retry once.
 
-`search` covers your own tasks by default. Before widening with
-`--assignee all`, ask the user which project (space) the task is in -
-people nearly always know - then retry with `--space "<name>"`. Space
-and assignee names resolve case-insensitively; a wrong name fails with
-the valid options inlined, so pick one and retry once. Time references
-like "two months ago" are fuzzy - use a generous
-`--updated-after`/`--updated-before` window or only one end, and
-remember tasks from past work are often in the final closed status
-(`--include-closed`).
+`tasks` and `search` cover your own tasks by default; `--assignee`
+targets a teammate instead. Before widening with `--assignee all`, ask
+the user which project (space) the task is in - people nearly always
+know - then bound with `--space "<name>"`. Space and assignee names
+resolve case-insensitively; a wrong name fails with the valid options
+inlined, so pick one and retry once. Time references like "two months
+ago" are fuzzy - use a generous `--updated-after`/`--updated-before`
+window or only one end, and remember tasks from past work are often in
+the final closed status (`--include-closed`).
 
 ## Updates
 

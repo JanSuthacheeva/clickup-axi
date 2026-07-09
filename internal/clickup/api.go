@@ -109,13 +109,6 @@ func (c *Client) GetTeamTasksPage(teamID string, q TaskQuery) (tasks []Task, las
 	return out.Tasks, last, nil
 }
 
-// GetTeamTasks returns the first page of tasks assigned to one user,
-// the workspace-scoped listing behind `clickup-axi tasks`.
-func (c *Client) GetTeamTasks(teamID string, assigneeID int64) ([]Task, *APIError) {
-	tasks, _, err := c.GetTeamTasksPage(teamID, TaskQuery{Assignees: []int64{assigneeID}})
-	return tasks, err
-}
-
 func (c *Client) GetUser() (*User, *APIError) {
 	var out struct {
 		User User `json:"user"`

@@ -20,9 +20,14 @@ var surface = []command{
 	},
 	{
 		usage:   "tasks",
-		summary: "List your open tasks (assigned to you)",
+		summary: "List open tasks (yours by default)",
+		note:    "(--assignee <who> for a teammate, --space <name|id> to narrow)",
 		skill:   "clickup-axi tasks",
 		comment: "open tasks assigned to the user",
+	},
+	{
+		skill:   `clickup-axi tasks --assignee "<who>" --space "<space>"`,
+		comment: "a teammate's open tasks; names resolve case-insensitively",
 	},
 	{
 		usage:   "tasks <id>",
