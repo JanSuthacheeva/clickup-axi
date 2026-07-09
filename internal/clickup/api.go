@@ -26,6 +26,17 @@ func (c *Client) SetTaskStatus(taskID, status string) *APIError {
 	return c.do(http.MethodPut, "/task/"+taskID, body, nil)
 }
 
+func (c *Client) UpdateTaskAssignees(taskID string, add, rem []int64) *APIError {
+	if add == nil {
+		add = []int64{}
+	}
+	if rem == nil {
+		rem = []int64{}
+	}
+	body := map[string]any{"assignees": map[string][]int64{"add": add, "rem": rem}}
+	return c.do(http.MethodPut, "/task/"+taskID, body, nil)
+}
+
 func (c *Client) GetList(id string) (*List, *APIError) {
 	var l List
 	if err := c.do(http.MethodGet, "/list/"+id, nil, &l); err != nil {
