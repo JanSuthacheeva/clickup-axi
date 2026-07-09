@@ -97,7 +97,7 @@ commands:
   tasks <id>          Show one task with its newest comments
                       (internal id like 86ey3tx8m or custom like HGAI-2316)
   search "<query>"    Find your tasks by words in the title or description
-  tasks edit <id>     Change a task's status (--status "<status>")
+  tasks edit <id>     Change status, add/remove assignees (--status, --assignee, --unassign)
   tasks comment <id>  Add a comment to a task (--text "<text>")
   auth login          Store a personal API token (read from stdin)
   auth logout         Remove the stored token

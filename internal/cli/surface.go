@@ -52,8 +52,12 @@ var surface = []command{
 	},
 	{
 		usage:   "tasks edit <id>",
-		summary: `Change a task's status (--status "<status>")`,
+		summary: `Change status, add/remove assignees (--status, --assignee, --unassign)`,
 		skill:   `clickup-axi tasks edit <id> --status "<status>"`,
+	},
+	{
+		skill:   `clickup-axi tasks edit <id> --assignee <who> --unassign <who>`,
+		comment: "reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id",
 	},
 	{
 		usage:   "tasks comment <id>",

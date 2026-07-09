@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -15,7 +17,8 @@ import (
 
 type fakeClickUp struct {
 	mux        *http.ServeMux
-	putBodies  []map[string]string
+	putBodies  []map[string]any
+	putRaw     []string
 	postBodies []map[string]string
 	commentGET int
 }
@@ -65,13 +68,29 @@ func (f *fakeClickUp) postComment(t *testing.T, taskID string, status int, respo
 func (f *fakeClickUp) put(t *testing.T, taskID string, status int, response string) {
 	t.Helper()
 	f.mux.HandleFunc("PUT /api/v2/task/"+taskID, func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]string
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		raw, _ := io.ReadAll(r.Body)
+		f.putRaw = append(f.putRaw, string(raw))
+		var body map[string]any
+		if err := json.Unmarshal(raw, &body); err != nil {
 			t.Errorf("PUT body did not decode: %v", err)
 		}
 		f.putBodies = append(f.putBodies, body)
 		w.WriteHeader(status)
 		w.Write([]byte(response))
+	})
+}
+
+// list registers GET /list/{id} so a status edit can be pre-validated
+// against the list's statuses.
+func (f *fakeClickUp) list(t *testing.T, id, name string, statuses ...string) {
+	t.Helper()
+	items := make([]string, len(statuses))
+	for i, s := range statuses {
+		items[i] = fmt.Sprintf(`{"status": %q}`, s)
+	}
+	body := fmt.Sprintf(`{"id": %q, "name": %q, "statuses": [%s]}`, id, name, strings.Join(items, ", "))
+	f.mux.HandleFunc("GET /api/v2/list/"+id, func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(body))
 	})
 }
 
@@ -184,6 +203,7 @@ func TestTaskViewNoCommentsSkipsFetch(t *testing.T) {
 func TestTaskEditChangesStatus(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", taskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
 	f.put(t, "abc123", http.StatusOK, `{}`)
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review")
@@ -207,23 +227,52 @@ func TestTaskEditSameStatusIsNoOp(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0 (idempotent no-op)\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "(no-op)") {
-		t.Errorf("output missing no-op acknowledgement\noutput:\n%s", out)
+	if want := `no changes (already has status "in progress")`; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if strings.Contains(out, "assign") {
+		t.Errorf("status-only no-op mentions assignees\noutput:\n%s", out)
 	}
 	if len(f.putBodies) != 0 {
 		t.Errorf("PUT was called for a no-op status change")
 	}
 }
 
-func TestTaskEditInvalidStatusListsValidOnes(t *testing.T) {
+// A combined status+assignee edit that fails at the API must not
+// misattribute the failure to the status when the status is valid: the
+// single PUT is atomic, so nothing partially committed, and a valid
+// status gets the raw translated error instead of a "not accepted" list.
+func TestTaskEditCombinedFailureWithValidStatusNotMisattributed(t *testing.T) {
 	f, c := newFakeClickUp(t)
-	f.task(t, "abc123", taskJSON)
-	f.put(t, "abc123", http.StatusBadRequest, `{"err": "Status not found", "ECODE": "CRTSK_001"}`)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.put(t, "abc123", http.StatusBadRequest, `{"err": "Assignee not found", "ECODE": "CRTSK_002"}`)
 	f.mux.HandleFunc("GET /api/v2/list/901234", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"id": "901234", "name": "Sprint 14", "statuses": [
 			{"status": "to do"}, {"status": "in progress"}, {"status": "in review"}, {"status": "done"}
 		]}`))
 	})
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review", "--assignee", "ting")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if strings.Contains(out, "not accepted") {
+		t.Errorf("valid status misattributed as rejected\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "status changed") {
+		t.Errorf("no field should be reported as changed on a failed atomic PUT\noutput:\n%s", out)
+	}
+	if len(f.putBodies) != 1 {
+		t.Errorf("want 1 atomic PUT, got %d: %v", len(f.putBodies), f.putRaw)
+	}
+}
+
+func TestTaskEditInvalidStatusListsValidOnes(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	// No PUT handler: an invalid status is caught pre-flight, before any write.
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "qa")
 	if code != 1 {
@@ -232,8 +281,314 @@ func TestTaskEditInvalidStatusListsValidOnes(t *testing.T) {
 	if want := "valid: to do, in progress, in review, done"; !strings.Contains(out, want) {
 		t.Errorf("output missing %q\noutput:\n%s", want, out)
 	}
-	if strings.Contains(out, "Status not found") {
-		t.Errorf("raw ClickUp error message leaked to output\noutput:\n%s", out)
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite an invalid status: %v", f.putRaw)
+	}
+}
+
+// A bad status and a bad assignee in the same call are reported together,
+// so the agent fixes both before one retry - neither hides the other, and
+// nothing is written while any field is invalid.
+func TestTaskEditAggregatesInvalidStatusAndAssignee(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	// No PUT handler: nothing must be written when any field is invalid.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "qa", "--assignee", "zoe")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"valid: to do, in progress, in review, done",
+		`assignee "zoe" matches none of the members`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("aggregated output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("no PUT should happen when a field is invalid: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditAggregatesMultipleBadTokensInOneField(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	// No PUT handler: nothing must be written when any token is invalid.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "zoe, xyz")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`assignee "zoe" matches none of the members`,
+		`assignee "xyz" matches none of the members`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("aggregated output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("no PUT should happen when a token is invalid: %v", f.putRaw)
+	}
+}
+
+// editTaskJSON gives the task a current assignee (jan, id 42) that lines
+// up with membersTeamJSON (jan 42, Ting Nguyen 189, Tinh Tran 190), so
+// add / remove / idempotency all resolve against consistent ids.
+const editTaskJSON = `{
+	"id": "abc123",
+	"custom_id": "AIKK-99",
+	"name": "Fix login redirect",
+	"status": {"status": "in progress"},
+	"url": "https://app.clickup.com/t/abc123",
+	"assignees": [{"id": 42, "username": "jan"}],
+	"list": {"id": "901234", "name": "Sprint 14"}
+}`
+
+func TestTaskEditAddsAssigneeByName(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "ting")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 assignees +Ting Nguyen"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"add":[189]`) {
+		t.Errorf("PUT raw = %v, want assignees.add [189]", f.putRaw)
+	}
+}
+
+func TestTaskEditUnassignByMeRemoves(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--unassign", "me")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 assignees -jan"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"rem":[42]`) {
+		t.Errorf("PUT raw = %v, want assignees.rem [42]", f.putRaw)
+	}
+}
+
+func TestTaskEditAddsByNumericID(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "190")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	// A valid numeric id is validated against membership and displays the
+	// resolved member name, not the bare id.
+	if want := "task: abc123 assignees +Tinh Tran"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"add":[190]`) {
+		t.Errorf("PUT raw = %v, want assignees.add [190]", f.putRaw)
+	}
+}
+
+func TestTaskEditRejectsUnknownNumericID(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "999")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "assignee 999 matches none of the members"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	// A non-existent id fails pre-flight; no PUT is ever sent.
+	if len(f.putRaw) != 0 {
+		t.Errorf("PUT raw = %v, want no PUT for an unknown id", f.putRaw)
+	}
+}
+
+func TestTaskEditCommaSeparatedAddsMultiple(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "ting, tinh")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"add":[189,190]`) {
+		t.Errorf("PUT raw = %v, want assignees.add [189,190]", f.putRaw)
+	}
+	for _, want := range []string{"+Ting Nguyen", "+Tinh Tran"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+func TestTaskEditRepeatedFlagEqualsComma(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	_, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "ting", "--assignee", "tinh")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"add":[189,190]`) {
+		t.Errorf("PUT raw = %v, want assignees.add [189,190]", f.putRaw)
+	}
+}
+
+func TestTaskEditCombinesStatusAndAssignee(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review", "--assignee", "ting")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"task: abc123 status changed: in progress -> in review",
+		"task: abc123 assignees +Ting Nguyen",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 1 {
+		t.Fatalf("want 1 atomic PUT (status + assignees), got %d: %v", len(f.putBodies), f.putRaw)
+	}
+	if f.putBodies[0]["status"] != "in review" {
+		t.Errorf("PUT body = %v, want status \"in review\"", f.putBodies[0])
+	}
+	if !strings.Contains(f.putRaw[0], `"add":[189]`) {
+		t.Errorf("PUT raw = %v, want assignees.add [189]", f.putRaw)
+	}
+}
+
+func TestTaskEditIdempotentAddIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // jan (42) already assigned
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	// No PUT handler: a PUT would 404 and surface in output.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "jan")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "no changes") {
+		t.Errorf("output missing no-op acknowledgement\noutput:\n%s", out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called for a no-op add: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditIdempotentUnassignIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // Ting (189) not assigned
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--unassign", "ting")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "no changes") {
+		t.Errorf("output missing no-op acknowledgement\noutput:\n%s", out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called for a no-op unassign: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditNameMissInlinesMembers(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "zoe")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := `assignee "zoe" matches none of the members`; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditAmbiguousNameInlinesCandidates(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "tin")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := `assignee "tin" is ambiguous`; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditSamePersonAddAndRemoveIsUsageError(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "ting", "--unassign", "ting")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if want := "both --assignee and --unassign"; !strings.Contains(out, want) {
+		t.Errorf("output missing conflict message\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditNoChangeFlagsIsUsageError(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if want := "needs a change"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditUnknownFlagListsValid(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "high")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if want := "valid: --status, --assignee, --unassign"; !strings.Contains(out, want) {
+		t.Errorf("output missing valid-flag list\noutput:\n%s", out)
 	}
 }
 

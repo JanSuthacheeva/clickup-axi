@@ -159,6 +159,7 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	var id, status string
 	statusSet := false
+	var addTokens, remTokens []string
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--status":
@@ -169,12 +170,26 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			}
 			status = args[i]
 			statusSet = true
+		case "--assignee":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--assignee needs a value", "Run `clickup-axi tasks edit <id> --assignee <who>`")
+				return 2
+			}
+			addTokens = append(addTokens, splitAssignees(args[i])...)
+		case "--unassign":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--unassign needs a value", "Run `clickup-axi tasks edit <id> --unassign <who>`")
+				return 2
+			}
+			remTokens = append(remTokens, splitAssignees(args[i])...)
 		case "--help", "-h":
 			fmt.Fprintln(out, tasksHelp)
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "-") {
-				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks edit\n  valid: --status", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks edit\n  valid: --status, --assignee, --unassign", args[i]))
 				return 2
 			}
 			if id != "" {
@@ -188,9 +203,9 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		output.WriteError(out, "tasks edit needs a task id", "Run `clickup-axi tasks edit <id> --status \"<status>\"`")
 		return 2
 	}
-	if !statusSet {
-		output.WriteError(out, "tasks edit needs --status (the only supported change for now)",
-			fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"`", id))
+	if !statusSet && len(addTokens) == 0 && len(remTokens) == 0 {
+		output.WriteError(out, "tasks edit needs a change (--status, --assignee, or --unassign)",
+			fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` or `--assignee <who>`", id))
 		return 2
 	}
 
@@ -198,24 +213,206 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	if err != nil {
 		return renderAPIError(out, err)
 	}
-	if strings.EqualFold(t.Status.Status, status) {
-		fmt.Fprintf(out, "task: %s already has status %q (no-op)\n", displayID(t), t.Status.Status)
+
+	// Pre-flight validation: every field is checked before anything is
+	// written, so a single bad field is reported alongside the others
+	// (not one at a time) and never leaves a half-applied task. Assignee
+	// names resolve against the workspace; the status is checked against
+	// the list. Only once all fields are known-good does the atomic PUT
+	// run. When the edit grows more fields, each adds its check here.
+	var fieldErrs []string
+
+	var addUsers, remUsers []clickup.User
+	if len(addTokens) > 0 || len(remTokens) > 0 {
+		team, terr := c.SelectTeam()
+		if terr != nil {
+			return renderAPIError(out, terr)
+		}
+		var tokErrs []string
+		if addUsers, tokErrs = resolveAssignees(addTokens, team, c); len(tokErrs) > 0 {
+			fieldErrs = append(fieldErrs, tokErrs...)
+		}
+		if remUsers, tokErrs = resolveAssignees(remTokens, team, c); len(tokErrs) > 0 {
+			fieldErrs = append(fieldErrs, tokErrs...)
+		}
+	}
+
+	statusChanges := statusSet && !strings.EqualFold(t.Status.Status, status)
+	if statusChanges {
+		// A wrong status is caught here rather than after a failed PUT, so
+		// it no longer hides behind (or gets hidden by) an assignee error.
+		if valid := listStatuses(c, t.List.ID); len(valid) > 0 && !containsFold(valid, status) {
+			fieldErrs = append(fieldErrs, fmt.Sprintf("status %q not accepted in list %s\n  valid: %s",
+				status, t.List.Name, strings.Join(valid, ", ")))
+		}
+	}
+
+	if len(fieldErrs) > 0 {
+		return renderFieldErrors(out, displayID(t), fieldErrs)
+	}
+
+	// A person named in both lists is a self-contradictory request.
+	for _, a := range addUsers {
+		for _, r := range remUsers {
+			if a.ID == r.ID {
+				output.WriteError(out, fmt.Sprintf("%q is in both --assignee and --unassign", assigneeName(a)),
+					"Name each person in only one of --assignee / --unassign")
+				return 2
+			}
+		}
+	}
+
+	// Idempotency: drop adds already assigned and removes not assigned,
+	// deduping within each set. A change that collapses to nothing is a
+	// stated no-op, never a wasted PUT.
+	assigned := make(map[int64]bool, len(t.Assignees))
+	for _, u := range t.Assignees {
+		assigned[u.ID] = true
+	}
+	var add, rem []int64
+	var addNames, remNames []string
+	seen := make(map[int64]bool)
+	for _, u := range addUsers {
+		if assigned[u.ID] || seen[u.ID] {
+			continue
+		}
+		seen[u.ID] = true
+		add = append(add, u.ID)
+		addNames = append(addNames, assigneeName(u))
+	}
+	seen = make(map[int64]bool)
+	for _, u := range remUsers {
+		if !assigned[u.ID] || seen[u.ID] {
+			continue
+		}
+		seen[u.ID] = true
+		rem = append(rem, u.ID)
+		remNames = append(remNames, assigneeName(u))
+	}
+
+	assigneeChanges := len(add) > 0 || len(rem) > 0
+	if !statusChanges && !assigneeChanges {
+		var reasons []string
+		if statusSet {
+			reasons = append(reasons, fmt.Sprintf("already has status %q", t.Status.Status))
+		}
+		if len(addTokens) > 0 || len(remTokens) > 0 {
+			reasons = append(reasons, "assignees already as requested")
+		}
+		fmt.Fprintf(out, "task: %s no changes (%s)\n", displayID(t), strings.Join(reasons, ", "))
 		return 0
 	}
+
 	// The fetch above resolved any custom id; mutate via internal id.
-	if err := c.SetTaskStatus(t.ID, status); err != nil {
-		// The only mutation here is a status change, so enrich any rejection
-		// with the list's valid statuses for one-turn recovery.
-		if valid := validStatuses(c, t.List.ID); valid != "" {
-			output.WriteError(out, fmt.Sprintf("status %q not accepted for task %s in list %s\n  valid: %s",
-				status, displayID(t), t.List.Name, valid),
-				fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` with one of the valid statuses", displayID(t)))
-			return 1
-		}
+	// Status and assignee changes go out in one PUT so they commit
+	// atomically - no partial-mutation window. Every field was validated
+	// pre-flight, so a failure here is a workflow restriction (e.g. a
+	// forbidden status transition), which gets the raw translated error.
+	edit := clickup.TaskEdit{}
+	if statusChanges {
+		edit.Status = status
+	}
+	if assigneeChanges {
+		edit.AddAssignees = add
+		edit.RemAssignees = rem
+	}
+	if err := c.UpdateTask(t.ID, edit); err != nil {
 		return renderAPIError(out, err)
 	}
-	fmt.Fprintf(out, "task: %s status changed: %s -> %s\n", displayID(t), t.Status.Status, status)
+	if statusChanges {
+		fmt.Fprintf(out, "task: %s status changed: %s -> %s\n", displayID(t), t.Status.Status, status)
+	}
+	if assigneeChanges {
+		fmt.Fprintf(out, "task: %s assignees%s%s\n", displayID(t), signedList("+", addNames), signedList("-", remNames))
+	}
+	output.WriteHelp(out, fmt.Sprintf("Run `clickup-axi tasks %s` to see the task", displayID(t)))
 	return 0
+}
+
+// renderFieldErrors reports every field that failed pre-flight validation
+// in one message, so the agent fixes them all before a single retry. The
+// edit is atomic, so nothing was changed while any field was invalid.
+func renderFieldErrors(out io.Writer, id string, errs []string) int {
+	if len(errs) == 1 {
+		output.WriteError(out, errs[0],
+			fmt.Sprintf("Fix the value above, then rerun `clickup-axi tasks edit %s ...`", id))
+		return 1
+	}
+	// Indent each error's continuation lines (e.g. a status "valid:" list)
+	// so they nest under their bullet instead of dedenting to the margin.
+	items := make([]string, len(errs))
+	for i, e := range errs {
+		items[i] = strings.ReplaceAll(e, "\n", "\n  ")
+	}
+	msg := fmt.Sprintf("%d fields cannot be applied (nothing was changed):\n  - %s",
+		len(items), strings.Join(items, "\n  - "))
+	output.WriteError(out, msg,
+		fmt.Sprintf("Fix all the values above, then rerun `clickup-axi tasks edit %s ...` once", id))
+	return 1
+}
+
+// splitAssignees turns a --assignee/--unassign value into tokens: a
+// comma is always a separator, so "ting, me" is two people. Empty
+// tokens (trailing commas, stray spaces) are dropped.
+func splitAssignees(v string) []string {
+	parts := strings.Split(v, ",")
+	tokens := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			tokens = append(tokens, p)
+		}
+	}
+	return tokens
+}
+
+// resolveAssignees resolves each token to a member, collecting every
+// miss/ambiguity (with its inline candidates) so all bad tokens in a
+// field are reported together and one retry can clear them.
+func resolveAssignees(tokens []string, team *clickup.Team, c *clickup.Client) ([]clickup.User, []string) {
+	users := make([]clickup.User, 0, len(tokens))
+	var errs []string
+	for _, tok := range tokens {
+		u, err := resolveEditAssignee(tok, team, c)
+		if err != nil {
+			errs = append(errs, err.Message)
+			continue
+		}
+		users = append(users, *u)
+	}
+	return users, errs
+}
+
+// resolveEditAssignee resolves one token for a mutation: "me" is the
+// caller, a numeric token is validated against membership (unlike the
+// read-only filter path, which trusts any id), and a name/email goes
+// through ResolveMember. Validating ids keeps a non-existent id from
+// passing pre-flight and printing a false success on a no-op PUT.
+func resolveEditAssignee(token string, team *clickup.Team, c *clickup.Client) (*clickup.User, *clickup.APIError) {
+	if token == "me" {
+		return c.GetUser()
+	}
+	if id, err := strconv.ParseInt(token, 10, 64); err == nil {
+		return team.ResolveMemberID(id)
+	}
+	return team.ResolveMember(token)
+}
+
+// assigneeName prefers the resolved username; a numeric-id input
+// resolves to an id-only user, so fall back to the id.
+func assigneeName(u clickup.User) string {
+	if u.Username != "" {
+		return u.Username
+	}
+	return strconv.FormatInt(u.ID, 10)
+}
+
+// signedList renders " +Name +Name" (or "-") for the change summary.
+func signedList(sign string, names []string) string {
+	var b strings.Builder
+	for _, n := range names {
+		fmt.Fprintf(&b, " %s%s", sign, n)
+	}
+	return b.String()
 }
 
 func cmdTaskComment(args []string, c *clickup.Client, out io.Writer) int {
@@ -274,16 +471,25 @@ func cmdTaskComment(args []string, c *clickup.Client, out io.Writer) int {
 	return 0
 }
 
-func validStatuses(c *clickup.Client, listID string) string {
+func containsFold(names []string, want string) bool {
+	for _, n := range names {
+		if strings.EqualFold(n, want) {
+			return true
+		}
+	}
+	return false
+}
+
+func listStatuses(c *clickup.Client, listID string) []string {
 	l, err := c.GetList(listID)
 	if err != nil {
-		return ""
+		return nil
 	}
 	names := make([]string, 0, len(l.Statuses))
 	for _, s := range l.Statuses {
 		names = append(names, s.Status)
 	}
-	return strings.Join(names, ", ")
+	return names
 }
 
 // taskDescription is the human-readable body of a task: ClickUp's plain

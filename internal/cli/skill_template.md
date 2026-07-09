@@ -3,10 +3,11 @@ name: clickup-axi
 description: >
   Manage ClickUp tasks via the clickup-axi CLI - list tasks assigned to
   the user, view a task with its comments and description by id, change
-  a task's status, and add a comment to a task. Use when the user
-  mentions ClickUp, sprint tasks, tickets with ids like HGAI-2316 or
-  ECOM-2254, asks what is on their plate, or wants a task looked up,
-  summarized, commented on, or moved to another status.
+  a task's status or assignees, and add a comment to a task. Use when
+  the user mentions ClickUp, sprint tasks, tickets with ids like
+  HGAI-2316 or ECOM-2254, asks what is on their plate, or wants a task
+  looked up, summarized, commented on, reassigned, or moved to another
+  status.
 user-invocable: false
 author: Jan Suthacheeva
 metadata:
@@ -69,6 +70,12 @@ pick a workspace on your own.
 Task ids may be custom (HGAI-2316, case-insensitive) or internal
 (86ey3tx8m). An invalid status fails with the list's valid statuses
 echoed inline - pick one and retry once.
+
+`tasks edit` also sets assignees: `--assignee <who>` adds and
+`--unassign <who>` removes, both repeatable and comma-separated
+(`--assignee ting,me`); `<who>` is `me`, a member name, or an id, and
+they combine with `--status` in one call. Re-adding an existing
+assignee or removing an absent one is a stated no-op.
 
 `tasks` and `search` cover your own tasks by default; `--assignee`
 targets a teammate instead. Before widening with `--assignee all`, ask

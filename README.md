@@ -12,7 +12,7 @@ design principles: token-efficient output, structured errors, and
 next-step hints on every command. It covers the flows agents need most:
 listing open tasks (yours or a teammate's), finding a task by words in
 its title or description, viewing one task with its comments, changing
-its status, and commenting on it.
+its status and assignees, and commenting on it.
 
 ## Installation
 
@@ -43,6 +43,7 @@ clickup-axi tasks --assignee ting    # a teammate's open tasks (names resolve)
 clickup-axi tasks HGAI-2316          # one task with newest comments
 clickup-axi search "oauth redirect"  # find your tasks by title/description text
 clickup-axi tasks edit HGAI-2316 --status "in review"
+clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me   # reassign (names resolve)
 clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
 ```
 

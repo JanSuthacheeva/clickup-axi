@@ -42,6 +42,21 @@ func (t *Team) ResolveMember(input string) (*User, *APIError) {
 		"assignee %q is ambiguous: %s", input, memberList(candidates))}
 }
 
+// ResolveMemberID validates a numeric id against the workspace's
+// members, returning the full member (username included) so a mutation
+// never trusts an id that belongs to nobody. A miss inlines candidates
+// for a one-step retry, the same recovery pattern as ResolveMember.
+func (t *Team) ResolveMemberID(id int64) (*User, *APIError) {
+	for i := range t.Members {
+		if t.Members[i].User.ID == id {
+			u := t.Members[i].User
+			return &u, nil
+		}
+	}
+	return nil, &APIError{Message: fmt.Sprintf(
+		"assignee %d matches none of the members of %s: %s", id, t.Name, memberList(allMembers(t)))}
+}
+
 func allMembers(t *Team) []User {
 	users := make([]User, len(t.Members))
 	for i, m := range t.Members {
