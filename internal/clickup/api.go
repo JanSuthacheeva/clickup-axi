@@ -31,11 +31,6 @@ type TaskEdit struct {
 	RemAssignees []int64
 }
 
-// HasChanges reports whether the edit carries any field to send.
-func (e TaskEdit) HasChanges() bool {
-	return e.Status != "" || len(e.AddAssignees) > 0 || len(e.RemAssignees) > 0
-}
-
 func (c *Client) UpdateTask(taskID string, edit TaskEdit) *APIError {
 	body := map[string]any{}
 	if edit.Status != "" {
