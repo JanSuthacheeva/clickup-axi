@@ -318,10 +318,12 @@ func scoreTask(terms []string, t *clickup.Task) (searchMatch, bool) {
 	return searchMatch{Task: *t, Where: whereLabel(hitName, hitID, hitDesc), Score: score}, true
 }
 
+// whereLabel names the matched fields with the same words the TOON
+// schema uses (`title`, not the API's internal `name`).
 func whereLabel(name, id, desc bool) string {
 	parts := make([]string, 0, 3)
 	if name {
-		parts = append(parts, "name")
+		parts = append(parts, "title")
 	}
 	if id {
 		parts = append(parts, "id")
@@ -402,7 +404,7 @@ func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchS
 
 	switch {
 	case len(matches) == 0:
-		fmt.Fprintf(out, "search %q: 0 matches (searched title + description)\n", query)
+		fmt.Fprintf(out, "search %q: 0 matches (searched title, custom id, description)\n", query)
 	case len(shown) < len(matches):
 		fmt.Fprintf(out, "search %q: showing top %d of %d matches\n", query, len(shown), len(matches))
 	default:
@@ -412,8 +414,11 @@ func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchS
 
 	if len(matches) == 0 {
 		help := []string{}
+		if !sc.complete {
+			help = append(help, "Not every task was scanned; narrow with --status/--space/--list/--updated-after")
+		}
 		if sc.updatedAfter != "" || sc.updatedBefore != "" {
-			help = append(help, "Human time memory is fuzzy - widen the --updated window or drop one end")
+			help = append(help, "Widen the --updated window")
 		}
 		if sc.assignee != "all" {
 			help = append(help, "Ask the user which project (space) the task is in, then retry with --assignee all --space \"<name>\"")

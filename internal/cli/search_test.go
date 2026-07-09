@@ -34,9 +34,9 @@ func TestSearchRanksTitleMatchesAboveDescription(t *testing.T) {
 		`search "deploy pipeline": 3 matches`,
 		"scope: assignee=me; closed excluded; scanned 4 (complete)",
 		"tasks[3]{id,title,status,match,due}:",
-		"a1,Deploy pipeline hardening,in progress,name,2026-07-06",
-		"b2,CI deploy step flaky,in review,name+desc,",
-		"d4,pipeline docs,open,name+desc,",
+		"a1,Deploy pipeline hardening,in progress,title,2026-07-06",
+		"b2,CI deploy step flaky,in review,title+desc,",
+		"d4,pipeline docs,open,title+desc,",
 		"Run `clickup-axi tasks <id>` for full detail",
 	} {
 		if !strings.Contains(out, want) {
@@ -328,7 +328,7 @@ func TestSearchZeroMatchesIsExplicit(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
 	for _, want := range []string{
-		`search "kubernetes": 0 matches`,
+		`search "kubernetes": 0 matches (searched title, custom id, description)`,
 		"scope: assignee=me; closed excluded; scanned 4 (complete)",
 		"Ask the user which project (space) the task is in",
 		"Add --include-closed to also search the final closed status",
@@ -338,8 +338,11 @@ func TestSearchZeroMatchesIsExplicit(t *testing.T) {
 			t.Errorf("output missing %q\noutput:\n%s", want, out)
 		}
 	}
-	if strings.Contains(out, "widen the --updated window") {
+	if strings.Contains(out, "--updated window") {
 		t.Errorf("date hint shown although no date filter was set\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "Not every task was scanned") {
+		t.Errorf("incomplete-scan hint shown although the scan completed\noutput:\n%s", out)
 	}
 }
 
@@ -354,8 +357,34 @@ func TestSearchZeroMatchesWithDateHintsAtWindow(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "Human time memory is fuzzy - widen the --updated window or drop one end") {
+	if !strings.Contains(out, "Widen the --updated window") {
 		t.Errorf("zero matches with a date filter must hint at the window\noutput:\n%s", out)
+	}
+}
+
+// A zero is only definitive when everything was scanned: hitting the
+// page budget with no match must tell the agent how to narrow so a
+// retry can cover the rest.
+func TestSearchZeroMatchesIncompleteScanHintsAtNarrowing(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		var rows []string
+		for i := 0; i < clickup.TeamTasksPageSize; i++ {
+			rows = append(rows, fmt.Sprintf(`{"id": "t%d", "name": "unrelated chore %d", "status": {"status": "open"}, "due_date": null}`, i, i))
+		}
+		fmt.Fprintf(w, `{"tasks": [%s]}`, strings.Join(rows, ","))
+	})
+
+	out, code := runCLI(t, c, "search", "kubernetes")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "more may exist") {
+		t.Errorf("scope must state the scan was incomplete\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "Not every task was scanned; narrow with --status/--space/--list/--updated-after") {
+		t.Errorf("zero matches on an incomplete scan must hint at narrowing\noutput:\n%s", out)
 	}
 }
 
