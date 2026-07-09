@@ -3,10 +3,11 @@ name: clickup-axi
 description: >
   Manage ClickUp tasks via the clickup-axi CLI - list tasks assigned to
   the user, view a task with its comments and description by id, change
-  a task's status, and add a comment to a task. Use when the user
-  mentions ClickUp, sprint tasks, tickets with ids like HGAI-2316 or
-  ECOM-2254, asks what is on their plate, or wants a task looked up,
-  summarized, commented on, or moved to another status.
+  a task's status or assignees, and add a comment to a task. Use when
+  the user mentions ClickUp, sprint tasks, tickets with ids like
+  HGAI-2316 or ECOM-2254, asks what is on their plate, or wants a task
+  looked up, summarized, commented on, reassigned, or moved to another
+  status.
 user-invocable: false
 author: Jan Suthacheeva
 metadata:

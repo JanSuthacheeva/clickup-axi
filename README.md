@@ -12,7 +12,7 @@ design principles: token-efficient output, structured errors, and
 next-step hints on every command. It covers the flows agents need most:
 listing open tasks (yours or a teammate's), finding a task by words in
 its title or description, viewing one task with its comments, changing
-its status, and commenting on it.
+its status and assignees, and commenting on it.
 
 ## Installation
 
