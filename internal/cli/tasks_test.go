@@ -169,6 +169,40 @@ func TestTasksSpaceNoMatchInlinesSpaces(t *testing.T) {
 	}
 }
 
+func TestTasksAssigneeAllNeedsSpace(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	out, code := runCLI(t, c, "tasks", "--assignee", "all")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "listing all assignees needs --space") {
+		t.Errorf("unbounded all-listing not refused\noutput:\n%s", out)
+	}
+}
+
+func TestTasksAssigneeAllWithSpaceListsEveryone(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.spaces(t, "9018", twoSpacesJSON)
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if got, ok := r.URL.Query()["assignees[]"]; ok {
+			t.Errorf("assignees[] = %v, want no assignee filter", got)
+		}
+		w.Write([]byte(`{"tasks": [
+			{"id": "86ey1", "name": "Checkout QA", "status": {"status": "to do"}, "due_date": null},
+			{"id": "86ey2", "name": "Restock banner", "status": {"status": "to do"}, "due_date": null}
+		]}`))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--assignee", "all", "--space", "webshop")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `tasks: 2 open tasks for any assignee in space 90121 "Webshop"`) {
+		t.Errorf("header missing the any-assignee scope\noutput:\n%s", out)
+	}
+}
+
 const membersTeamJSON = `{"teams": [{"id": "9018", "name": "Buzzwoo", "members": [
 	{"user": {"id": 42, "username": "jan", "email": "jan@buzzwoo.de"}},
 	{"user": {"id": 189, "username": "Ting Nguyen"}},

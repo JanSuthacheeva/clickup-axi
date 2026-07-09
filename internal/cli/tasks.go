@@ -80,11 +80,14 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 				space = args[i]
 				continue
 			}
-			// me is a keyword; anything else is resolved later (numeric
-			// id directly, otherwise by member name).
-			if strings.EqualFold(args[i], "me") {
+			// me/all are keywords; anything else is resolved later
+			// (numeric id directly, otherwise by member name).
+			switch {
+			case strings.EqualFold(args[i], "me"):
 				assignee = "me"
-			} else {
+			case strings.EqualFold(args[i], "all"):
+				assignee = "all"
+			default:
 				assignee = args[i]
 			}
 		case "--comments", "--no-comments", "--full":
@@ -105,21 +108,31 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 
+	if assignee == "all" && space == "" {
+		output.WriteError(out, "listing all assignees needs --space (a workspace-wide scan is unbounded)",
+			"Run `clickup-axi tasks --assignee all --space \"<name>\"`")
+		return 2
+	}
+
 	team, err := c.SelectTeam()
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 
-	u, err := resolveAssignee(assignee, team, c)
-	if err != nil {
-		return renderAPIError(out, err)
+	var q clickup.TaskQuery
+	scope := "for any assignee"
+	if assignee != "all" {
+		u, apiErr := resolveAssignee(assignee, team, c)
+		if apiErr != nil {
+			return renderAPIError(out, apiErr)
+		}
+		q.Assignees = []int64{u.ID}
+		label := assignee
+		if u.Username != "" {
+			label = u.Username
+		}
+		scope = "assigned to " + label
 	}
-	label := assignee
-	if u.Username != "" {
-		label = u.Username
-	}
-
-	q := clickup.TaskQuery{Assignees: []int64{u.ID}}
 	where := " in " + team.Name
 	var spaceSuffix string
 	if space != "" {
@@ -141,7 +154,7 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		return renderAPIError(out, err)
 	}
 	if len(tasks) == 0 {
-		fmt.Fprintf(out, "tasks: 0 open tasks assigned to %s%s\n", label, where)
+		fmt.Fprintf(out, "tasks: 0 open tasks %s%s\n", scope, where)
 		return 0
 	}
 
@@ -149,7 +162,7 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	if len(tasks) == clickup.TeamTasksPageSize {
 		suffix = " (first page; more may exist)"
 	}
-	fmt.Fprintf(out, "tasks: %d open task%s assigned to %s%s%s\n", len(tasks), pluralS(len(tasks)), label, spaceSuffix, suffix)
+	fmt.Fprintf(out, "tasks: %d open task%s %s%s%s\n", len(tasks), pluralS(len(tasks)), scope, spaceSuffix, suffix)
 	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
 	for i := range tasks {
 		t := &tasks[i]
