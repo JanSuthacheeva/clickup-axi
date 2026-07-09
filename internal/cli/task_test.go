@@ -313,6 +313,29 @@ func TestTaskEditAggregatesInvalidStatusAndAssignee(t *testing.T) {
 	}
 }
 
+func TestTaskEditAggregatesMultipleBadTokensInOneField(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	// No PUT handler: nothing must be written when any token is invalid.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "zoe, xyz")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`assignee "zoe" matches none of the members`,
+		`assignee "xyz" matches none of the members`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("aggregated output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("no PUT should happen when a token is invalid: %v", f.putRaw)
+	}
+}
+
 // editTaskJSON gives the task a current assignee (jan, id 42) that lines
 // up with membersTeamJSON (jan 42, Ting Nguyen 189, Tinh Tran 190), so
 // add / remove / idempotency all resolve against consistent ids.
@@ -362,7 +385,7 @@ func TestTaskEditUnassignByMeRemoves(t *testing.T) {
 	}
 }
 
-func TestTaskEditAddsByNumericIDWithoutName(t *testing.T) {
+func TestTaskEditAddsByNumericID(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", editTaskJSON)
 	f.meWithTeams(t, 42, "jan", membersTeamJSON)
@@ -372,11 +395,32 @@ func TestTaskEditAddsByNumericIDWithoutName(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if want := "task: abc123 assignees +190"; !strings.Contains(out, want) {
+	// A valid numeric id is validated against membership and displays the
+	// resolved member name, not the bare id.
+	if want := "task: abc123 assignees +Tinh Tran"; !strings.Contains(out, want) {
 		t.Errorf("output missing %q\noutput:\n%s", want, out)
 	}
 	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"add":[190]`) {
 		t.Errorf("PUT raw = %v, want assignees.add [190]", f.putRaw)
+	}
+}
+
+func TestTaskEditRejectsUnknownNumericID(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--assignee", "999")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "assignee 999 matches none of the members"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	// A non-existent id fails pre-flight; no PUT is ever sent.
+	if len(f.putRaw) != 0 {
+		t.Errorf("PUT raw = %v, want no PUT for an unknown id", f.putRaw)
 	}
 }
 
