@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tasks edit <id> --assignee <who>` / `--unassign <who>` change a task's
+  assignees; both flags repeat and accept a comma-separated list, and
+  `<who>` is `me`, a member name, or an id (resolved case-insensitively).
+  They compose with `--status` in a single atomic update, every field is
+  validated before anything is written, and re-adding an existing
+  assignee or removing an absent one is a stated no-op.
 - `tasks --assignee <who>` lists a teammate's open tasks instead of your
   own: `me` (default), `all`, or a member's name/id, resolved
   case-insensitively like `search`. `tasks --space <name|id>` narrows the
