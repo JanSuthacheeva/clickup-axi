@@ -36,6 +36,16 @@ var surface = []command{
 		comment: "complete description and all fetched comments",
 	},
 	{
+		usage:   `search "<query>"`,
+		summary: "Find your tasks by words in the title or description",
+		skill:   `clickup-axi search "<query>"`,
+		comment: "find YOUR tasks by words in the title or description",
+	},
+	{
+		skill:   `clickup-axi search "<query>" --assignee all --space "<space>"`,
+		comment: "widen beyond your tasks; space and assignee resolve by name",
+	},
+	{
 		usage:   "tasks edit <id>",
 		summary: `Change a task's status (--status "<status>")`,
 		skill:   `clickup-axi tasks edit <id> --status "<status>"`,

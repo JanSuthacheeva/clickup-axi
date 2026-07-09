@@ -104,10 +104,7 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 	fmt.Fprintf(out, "  url: %s\n", t.URL)
 
 	var help []string
-	description := t.TextContent
-	if description == "" {
-		description = t.Description
-	}
+	description := taskDescription(t)
 	if description != "" {
 		shown := description
 		if !full {
@@ -287,6 +284,16 @@ func validStatuses(c *clickup.Client, listID string) string {
 		names = append(names, s.Status)
 	}
 	return strings.Join(names, ", ")
+}
+
+// taskDescription is the human-readable body of a task: ClickUp's plain
+// text_content when present (markdown stripped), falling back to the raw
+// description. Both the detail view and search read it through here.
+func taskDescription(t *clickup.Task) string {
+	if t.TextContent != "" {
+		return t.TextContent
+	}
+	return t.Description
 }
 
 func usernames(users []clickup.User) string {

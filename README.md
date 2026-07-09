@@ -10,8 +10,9 @@
 A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md)
 design principles: token-efficient output, structured errors, and
 next-step hints on every command. It covers the flows agents need most:
-listing your open tasks, viewing one task with its comments, changing
-its status, and commenting on it.
+listing your open tasks, finding a task by words in its title or
+description, viewing one task with its comments, changing its status,
+and commenting on it.
 
 ## Installation
 
@@ -39,12 +40,34 @@ HGAI-2316") - or run the CLI directly:
 clickup-axi                          # who am I + workspaces
 clickup-axi tasks                    # your open tasks
 clickup-axi tasks HGAI-2316          # one task with newest comments
+clickup-axi search "oauth redirect"  # find your tasks by title/description text
 clickup-axi tasks edit HGAI-2316 --status "in review"
 clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
 ```
 
 Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`).
-`clickup-axi tasks --help` has flags and examples.
+`clickup-axi tasks --help` and `clickup-axi search --help` have flags
+and examples.
+
+### Search
+
+ClickUp's public API has no text-search endpoint, so `search` filters
+tasks server-side and ranks the matches locally (title above
+description; every query word must match). To stay bounded and
+relevant it searches **only your own tasks by default** and hides the
+final `closed` status; each result prints a `scope:` line stating
+exactly what was searched. Widen with `--assignee all`, which then
+requires at least one bounding filter. Spaces and assignees resolve
+by name (case-insensitive), because people think in projects and
+names, not ids - and a person searching for a task nearly always
+knows which project it is in, so agents are guided to ask for the
+project rather than scan widely:
+
+```sh
+clickup-axi search invoice --status "in review"
+clickup-axi search checkout --assignee ting --space "Webshop"
+clickup-axi search migration --assignee all --updated-after 2026-05-01
+```
 
 ## Environment variables
 

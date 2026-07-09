@@ -33,6 +33,7 @@ func (m MsEpoch) Date() string {
 type User struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
+	Email    string `json:"email"`
 }
 
 type Task struct {
@@ -72,8 +73,16 @@ type List struct {
 }
 
 type Team struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID      string       `json:"id"`
+	Name    string       `json:"name"`
+	Members []TeamMember `json:"members"`
+}
+
+// TeamMember wraps the member entries of the GET /team response; the
+// workspace's people come along with the team fetch, so member-name
+// resolution never needs an extra request.
+type TeamMember struct {
+	User User `json:"user"`
 }
 
 // TeamTasksPageSize is the fixed page size of the filtered team tasks

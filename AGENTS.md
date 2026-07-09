@@ -94,11 +94,24 @@ instead).
   (`HGAI-2316`). Resolution policy lives in `clickup.GetTaskByID`:
   `CLICKUP_AXI_CUSTOM_IDS` set = custom-only; otherwise internal first,
   custom fallback. When forced, custom ids are also displayed everywhere.
-- Workspace-scoped calls (`tasks`, custom-id resolution) pick a team
-  through `clickup.SelectTeam`: `CLICKUP_AXI_WORKSPACE` pins one when
-  set (validated against the visible teams); otherwise the single
+- Workspace-scoped calls (`tasks`, `search`, custom-id resolution) pick
+  a team through `clickup.SelectTeam`: `CLICKUP_AXI_WORKSPACE` pins one
+  when set (validated against the visible teams); otherwise the single
   visible team is used, and more than one is an error that inlines the
   visible `id,name` pairs so the agent can retry in one step.
+- Spaces and assignees resolve by name, not just id: `ResolveSpace`
+  (`clickup/space.go`) and `Team.ResolveMember` (`clickup/member.go`)
+  take a numeric id directly, otherwise match an exact name/email
+  (case-insensitive) then a unique substring. Every miss/ambiguity is
+  an error inlining candidate `id,name` pairs (capped at
+  `resolveListCap`) for a one-step retry - the same recovery pattern as
+  `SelectTeam`.
+- `search` has no ClickUp text-search endpoint behind it: it filters
+  tasks server-side via `GetTeamTasksPage` (paged, bounded by
+  `searchMaxPages`) and ranks matches locally in `rankTasks` (title >
+  id > description, AND across query words). It defaults to
+  `assignee=me` and excludes the final closed status; `--assignee all`
+  requires at least one bounding filter.
 - After a task is fetched, follow-up API calls use the internal id from
   the response.
 - Rate limit is roughly 100 requests/minute; the client retries a GET

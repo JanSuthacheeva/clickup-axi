@@ -38,6 +38,14 @@ examples:
 
 // GenerateSkill renders the complete SKILL.md content.
 func GenerateSkill() string {
+	// Pad comments past the longest command so the `#` never glues onto
+	// a command (a fixed width silently broke once a command outgrew it).
+	width := 0
+	for _, c := range surface {
+		if c.skill != "" && c.comment != "" && len(c.skill) > width {
+			width = len(c.skill)
+		}
+	}
 	var b strings.Builder
 	for _, c := range surface {
 		if c.skill == "" {
@@ -47,7 +55,7 @@ func GenerateSkill() string {
 			fmt.Fprintf(&b, "%s\n", c.skill)
 			continue
 		}
-		fmt.Fprintf(&b, "%-43s# %s\n", c.skill, c.comment)
+		fmt.Fprintf(&b, "%-*s # %s\n", width, c.skill, c.comment)
 	}
 	block := strings.TrimRight(b.String(), "\n")
 	return strings.ReplaceAll(skillTemplate, "{{COMMANDS}}", block)
