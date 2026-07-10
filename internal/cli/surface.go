@@ -52,12 +52,20 @@ var surface = []command{
 	},
 	{
 		usage:   "tasks edit <id>",
-		summary: `Change status, add/remove assignees (--status, --assignee, --unassign)`,
+		summary: "Change status, assignees, priority, name, due date, description, tags",
 		skill:   `clickup-axi tasks edit <id> --status "<status>"`,
 	},
 	{
 		skill:   `clickup-axi tasks edit <id> --assignee <who> --unassign <who>`,
 		comment: "reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id",
+	},
+	{
+		skill:   `clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>"`,
+		comment: "priority: urgent|high|normal|low|none; due: YYYY-MM-DD or none; fields combine in one call",
+	},
+	{
+		skill:   `clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>`,
+		comment: "--body replaces the description, --append-body adds below it; tags must already exist in the space",
 	},
 	{
 		usage:   "tasks comment <id>",

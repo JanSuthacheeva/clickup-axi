@@ -44,6 +44,9 @@ clickup-axi tasks HGAI-2316          # one task with newest comments
 clickup-axi search "oauth redirect"  # find your tasks by title/description text
 clickup-axi tasks edit HGAI-2316 --status "in review"
 clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me   # reassign (names resolve)
+clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01   # multi-field edit, one atomic call
+clickup-axi tasks edit HGAI-2316 --append-body "QA notes ..."       # add to the description
+clickup-axi tasks edit HGAI-2316 --add-tag qa --remove-tag wip      # existing space tags only
 clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
 ```
 
