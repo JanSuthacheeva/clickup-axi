@@ -755,8 +755,11 @@ func currentPriority(t *clickup.Task) string {
 }
 
 // parseDue turns --due input into a millisecond epoch: "none" clears
-// (0), otherwise the date is read as UTC midnight so the view's UTC
-// rendering round-trips exactly.
+// (0), otherwise the date is anchored at 12:00 UTC. ClickUp re-derives
+// the calendar date in the workspace's timezone and stores it at 04:00
+// local (verified against the real API), so noon keeps the date stable
+// for every offset from UTC-11 to UTC+12 - midnight would land on the
+// previous day west of Greenwich.
 func parseDue(s string) (int64, bool) {
 	if strings.EqualFold(s, "none") {
 		return 0, true
@@ -765,7 +768,7 @@ func parseDue(s string) (int64, bool) {
 	if err != nil {
 		return 0, false
 	}
-	return d.UnixMilli(), true
+	return d.Add(12 * time.Hour).UnixMilli(), true
 }
 
 // dueLabel renders a due edit the way the task view renders due dates
@@ -774,7 +777,7 @@ func dueLabel(ms int64) string {
 	if ms == 0 {
 		return ""
 	}
-	return time.UnixMilli(ms).UTC().Format("2006-01-02")
+	return time.UnixMilli(ms).Local().Format("2006-01-02")
 }
 
 // orNone renders an absent value ("") as the word agents pass to clear

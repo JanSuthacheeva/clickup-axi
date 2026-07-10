@@ -37,7 +37,7 @@ func TestTasksListsOpenAssignedTasks(t *testing.T) {
 			t.Errorf("subtasks = %q, want true", got)
 		}
 		w.Write([]byte(`{"tasks": [
-			{"id": "86ey1", "name": "Fix login, redirect", "status": {"status": "in progress"}, "due_date": "1783296000000"},
+			{"id": "86ey1", "name": "Fix login, redirect", "status": {"status": "in progress"}, "due_date": "1783339200000"},
 			{"id": "86ey2", "name": "QA checkout", "status": {"status": "to do"}, "due_date": null}
 		]}`))
 	})

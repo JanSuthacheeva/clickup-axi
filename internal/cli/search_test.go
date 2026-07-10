@@ -13,7 +13,7 @@ import (
 // searchCorpus is a small fixed set exercising title-only, description-
 // only, both, and no-match tasks against the query "deploy pipeline".
 const searchCorpus = `{"tasks": [
-	{"id": "a1", "name": "Deploy pipeline hardening", "status": {"status": "in progress"}, "due_date": "1783296000000"},
+	{"id": "a1", "name": "Deploy pipeline hardening", "status": {"status": "in progress"}, "due_date": "1783339200000"},
 	{"id": "b2", "name": "CI deploy step flaky", "text_content": "the deploy pipeline breaks nightly", "status": {"status": "in review"}, "due_date": null},
 	{"id": "c3", "name": "Unrelated chore", "text_content": "nothing to see", "status": {"status": "to do"}, "due_date": null},
 	{"id": "d4", "name": "pipeline docs", "text_content": "docs about deploy", "status": {"status": "open"}, "due_date": null}

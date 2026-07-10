@@ -133,6 +133,9 @@ func (f *fakeClickUp) failTagAdd(t *testing.T, taskID, tag string) {
 	})
 }
 
+// Fixture timestamps sit at 12:00 UTC so their local-date rendering is
+// the same in every timezone from UTC-11 to UTC+12, keeping these tests
+// deterministic on any dev machine or CI zone.
 const taskJSON = `{
 	"id": "abc123",
 	"custom_id": "AIKK-99",
@@ -140,16 +143,16 @@ const taskJSON = `{
 	"text_content": "After OAuth callback the user lands on a 404.",
 	"status": {"status": "in progress"},
 	"priority": {"priority": "high"},
-	"due_date": "1783296000000",
+	"due_date": "1783339200000",
 	"url": "https://app.clickup.com/t/abc123",
 	"assignees": [{"id": 1, "username": "jan"}],
 	"list": {"id": "901234", "name": "Sprint 14"}
 }`
 
 const commentsJSON = `{"comments": [
-	{"id": "3", "comment_text": "Repro'd on staging, with Safari", "user": {"id": 2, "username": "mia"}, "date": 1782950400000},
-	{"id": "2", "comment_text": "Suspect the state param", "user": {"id": 1, "username": "jan"}, "date": "1782864000000"},
-	{"id": "1", "comment_text": "Customer report", "user": {"id": 3, "username": "tom"}, "date": 1782777600000}
+	{"id": "3", "comment_text": "Repro'd on staging, with Safari", "user": {"id": 2, "username": "mia"}, "date": 1782993600000},
+	{"id": "2", "comment_text": "Suspect the state param", "user": {"id": 1, "username": "jan"}, "date": "1782907200000"},
+	{"id": "1", "comment_text": "Customer report", "user": {"id": 3, "username": "tom"}, "date": 1782820800000}
 ]}`
 
 func runCLI(t *testing.T, c *clickup.Client, args ...string) (string, int) {
@@ -385,7 +388,7 @@ const editTaskJSON = `{
 	"name": "Fix login redirect",
 	"status": {"status": "in progress"},
 	"priority": {"priority": "high"},
-	"due_date": "1783296000000",
+	"due_date": "1783339200000",
 	"markdown_description": "After OAuth the user lands on a 404.",
 	"url": "https://app.clickup.com/t/abc123",
 	"assignees": [{"id": 42, "username": "jan"}],
@@ -716,8 +719,8 @@ func TestTaskEditSetsDueDate(t *testing.T) {
 	if want := "task: abc123 due: 2026-07-06 -> 2026-07-20"; !strings.Contains(out, want) {
 		t.Errorf("output missing %q\noutput:\n%s", want, out)
 	}
-	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"due_date":1784505600000`) {
-		t.Errorf("PUT raw = %v, want due_date 1784505600000", f.putRaw)
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"due_date":1784548800000`) {
+		t.Errorf("PUT raw = %v, want due_date 1784548800000", f.putRaw)
 	}
 	if !strings.Contains(f.putRaw[0], `"due_date_time":false`) {
 		t.Errorf("PUT raw = %v, want due_date_time false", f.putRaw)
@@ -832,7 +835,7 @@ func TestTaskEditMultipleFieldsOneAtomicPut(t *testing.T) {
 	if len(f.putBodies) != 1 {
 		t.Fatalf("want 1 atomic PUT, got %d: %v", len(f.putBodies), f.putRaw)
 	}
-	for _, want := range []string{`"status":"in review"`, `"priority":4`, `"due_date":1784505600000`, `"name":"Fix OAuth redirect"`} {
+	for _, want := range []string{`"status":"in review"`, `"priority":4`, `"due_date":1784548800000`, `"name":"Fix OAuth redirect"`} {
 		if !strings.Contains(f.putRaw[0], want) {
 			t.Errorf("PUT raw missing %s\nraw: %s", want, f.putRaw[0])
 		}

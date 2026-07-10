@@ -19,6 +19,11 @@ func (m *MsEpoch) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// Date renders the epoch as a local calendar date. ClickUp anchors
+// date-only due dates at 04:00 in the workspace's timezone, so a UTC
+// rendering shifts the date back by one everywhere east of Greenwich;
+// the machine's local zone is the best available proxy for the
+// workspace's.
 func (m MsEpoch) Date() string {
 	if m == "" {
 		return ""
@@ -27,7 +32,7 @@ func (m MsEpoch) Date() string {
 	if err != nil {
 		return string(m)
 	}
-	return time.UnixMilli(n).UTC().Format("2006-01-02")
+	return time.UnixMilli(n).Local().Format("2006-01-02")
 }
 
 type User struct {

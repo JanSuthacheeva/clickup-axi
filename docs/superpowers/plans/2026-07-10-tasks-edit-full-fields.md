@@ -31,7 +31,7 @@
 - **Unknown tag on `--add-tag`:** refused pre-flight with the space's existing tags inlined (a typo must not silently mint a tag). Creating tags is out of scope for `edit`.
 - **Body:** `--body` replaces, `--append-body` appends (separator: blank line). Jan asked for both modes. Empty values are usage errors; clearing a description is deferred (no `--body ""`).
 - **`--priority none` / `--due none`** clear their field (JSON `null`). Task 5 verifies clearing against the real API; the n8n community reports null-clearing as finicky, so the E2E step has an explicit contingency.
-- **`--due`** accepts `YYYY-MM-DD` only (parsed as UTC midnight so the view's UTC rendering round-trips); relative dates ("friday", "+3d") stay deferred to `create` per the v1.0.0 doc.
+- **`--due`** accepts `YYYY-MM-DD` only; relative dates ("friday", "+3d") stay deferred to `create` per the v1.0.0 doc. (Amended after E2E, 2026-07-10: ClickUp re-derives the date in the workspace timezone and stores it at 04:00 local, so dates are written anchored at 12:00 UTC and rendered in local time - UTC midnight/rendering was off by one day east or west of Greenwich.)
 
 ---
 
