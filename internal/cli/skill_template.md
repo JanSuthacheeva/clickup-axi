@@ -96,6 +96,15 @@ ago" are fuzzy - use a generous `--updated-after`/`--updated-before`
 window or only one end, and remember tasks from past work are often in
 the final closed status (`--include-closed`).
 
+## Session hook
+
+`clickup-axi setup --global` installs a session-start hook (Claude
+Code, Codex, OpenCode) so new sessions begin with the user's open
+tasks in context; only run it when the user asks for it. On agent
+paths the scope flag is required (`--global` or `--project`);
+`--remove` uninstalls. Never run `clickup-axi context` yourself - it
+is the hook's payload, and the harness injects it automatically.
+
 ## Updates
 
 When any output ends with an `update: vX.Y.Z available` line, ask the

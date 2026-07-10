@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `setup` installs a session-start hook for Claude Code
+  (`~/.claude/settings.json`), Codex (`~/.codex/hooks.json`), and
+  OpenCode (a managed plugin file), so agent sessions begin with the
+  user's open tasks already in context. `--global` targets every host
+  whose config dir exists; `--project` writes into the current
+  directory's `.claude`/`.codex` configs (OpenCode is global-only).
+  Rerunning repairs a moved binary path and is otherwise a no-op;
+  `--remove` uninstalls, touching nothing but clickup-axi's own
+  entries. In a terminal the scope is prompted; on agent paths it must
+  be explicit.
+- `context`, the hook's payload: a compact dashboard of the user's 5
+  most urgent open tasks (due-soonest first, total stated) behind a
+  hard 3-second budget. It always exits 0 and degrades to a one-line
+  reason (not authenticated, workspace unpinned, API unreachable) so a
+  broken network can never break a session start.
+
 ## [0.5.0] - 2026-07-10
 
 ### Added

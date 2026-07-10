@@ -75,6 +75,30 @@ clickup-axi search checkout --assignee ting --space "Webshop"
 clickup-axi search migration --assignee all --updated-after 2026-05-01
 ```
 
+## Session hook
+
+`clickup-axi setup --global` registers a session-start hook in every
+detected agent host, so each new session begins with your open tasks
+already in the agent's context - no prompt, no tool call:
+
+| Host | Config written |
+|---|---|
+| Claude Code | `~/.claude/settings.json` (project: `.claude/settings.json`) |
+| Codex | `~/.codex/hooks.json` (project: `.codex/hooks.json`) |
+| OpenCode | `~/.config/opencode/plugins/clickup-axi.js` (global only) |
+
+The hook runs `clickup-axi context`: a dashboard of your 5 most urgent
+open tasks (due-soonest first, total stated) behind a hard 3-second
+budget. It is not meant to be run by hand, always exits 0, and
+degrades to a one-line reason when tasks are unavailable - a broken
+network can never break a session start. Rerunning `setup` repairs a
+moved binary path and is otherwise a no-op; only clickup-axi's own
+entries are ever touched. Uninstall with:
+
+```sh
+clickup-axi setup --global --remove
+```
+
 ## Environment variables
 
 | Variable | Effect | Default |

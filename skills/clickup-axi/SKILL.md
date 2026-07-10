@@ -77,6 +77,7 @@ clickup-axi tasks edit <id> --assignee <who> --unassign <who>            # reass
 clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>" # priority: urgent|high|normal|low|none; due: YYYY-MM-DD or none; fields combine in one call
 clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>   # --body replaces the description, --append-body adds below it; tags must already exist in the space
 clickup-axi tasks comment <id> --text "<text>"
+clickup-axi setup --global                                               # install the session-start dashboard hook (only after user consent)
 clickup-axi update                                                       # self-update to the latest release (only after user consent)
 ```
 
@@ -107,6 +108,15 @@ inlined, so pick one and retry once. Time references like "two months
 ago" are fuzzy - use a generous `--updated-after`/`--updated-before`
 window or only one end, and remember tasks from past work are often in
 the final closed status (`--include-closed`).
+
+## Session hook
+
+`clickup-axi setup --global` installs a session-start hook (Claude
+Code, Codex, OpenCode) so new sessions begin with the user's open
+tasks in context; only run it when the user asks for it. On agent
+paths the scope flag is required (`--global` or `--project`);
+`--remove` uninstalls. Never run `clickup-axi context` yourself - it
+is the hook's payload, and the harness injects it automatically.
 
 ## Updates
 
