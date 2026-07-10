@@ -23,22 +23,16 @@ func resolveToken() string {
 	return strings.TrimSpace(string(b))
 }
 
+// TokenFilePath is the platform-native token location
+// (os.UserConfigDir): ~/.config on Linux, ~/Library/Application
+// Support on macOS. Deliberately NOT overridden by XDG_CONFIG_HOME
+// outside Linux - macOS shells commonly export it, and honoring it
+// would strand tokens stored by earlier versions. Tests isolate by
+// relocating HOME instead.
 func TokenFilePath() (string, error) {
-	dir, err := userConfigDir()
+	dir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, "clickup-axi", "token"), nil
-}
-
-// userConfigDir resolves the config root, honoring XDG_CONFIG_HOME on
-// every platform - os.UserConfigDir ignores it outside Linux, which
-// made tests that relocate the config dir silently touch the real
-// ~/Library/Application Support on macOS. Without the override the
-// platform default stands, so existing installs keep their paths.
-func userConfigDir() (string, error) {
-	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
-		return dir, nil
-	}
-	return os.UserConfigDir()
 }
