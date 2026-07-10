@@ -77,6 +77,17 @@ func (c *Client) UpdateTask(taskID string, edit TaskEdit) *APIError {
 	return c.do(http.MethodPut, "/task/"+taskID, body, nil)
 }
 
+// AddTag and RemoveTag attach and detach one tag; the API has no batch
+// form, so callers loop. Adding an unknown name would create the tag,
+// which is why the CLI validates tags pre-flight (ResolveSpaceTags).
+func (c *Client) AddTag(taskID, tag string) *APIError {
+	return c.do(http.MethodPost, "/task/"+taskID+"/tag/"+url.PathEscape(tag), nil, nil)
+}
+
+func (c *Client) RemoveTag(taskID, tag string) *APIError {
+	return c.do(http.MethodDelete, "/task/"+taskID+"/tag/"+url.PathEscape(tag), nil, nil)
+}
+
 func (c *Client) GetList(id string) (*List, *APIError) {
 	var l List
 	if err := c.do(http.MethodGet, "/list/"+id, nil, &l); err != nil {

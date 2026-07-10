@@ -59,6 +59,10 @@ type Task struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"list"`
+	Tags  []Tag `json:"tags"`
+	Space struct {
+		ID string `json:"id"`
+	} `json:"space"`
 }
 
 type Comment struct {
@@ -66,6 +70,11 @@ type Comment struct {
 	Text string  `json:"comment_text"`
 	User User    `json:"user"`
 	Date MsEpoch `json:"date"`
+}
+
+// Tag is a task tag; only the name matters to the CLI.
+type Tag struct {
+	Name string `json:"name"`
 }
 
 type List struct {

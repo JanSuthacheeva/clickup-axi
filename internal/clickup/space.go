@@ -61,6 +61,62 @@ func (c *Client) ResolveSpace(teamID, input string) (*Space, *APIError) {
 		"space %q is ambiguous: %s", input, spaceList(candidates))}
 }
 
+func (c *Client) GetSpaceTags(spaceID string) ([]Tag, *APIError) {
+	var out struct {
+		Tags []Tag `json:"tags"`
+	}
+	if err := c.do(http.MethodGet, "/space/"+spaceID+"/tag", nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Tags, nil
+}
+
+// ResolveSpaceTags checks the given names against the space's existing
+// tags (case-insensitive). It returns one message per unknown name,
+// each inlining the existing tags - the same recovery pattern as
+// ResolveSpace and ResolveMember, but aggregated so the edit's
+// pre-flight can report every bad tag at once. The *APIError is
+// transport-level only.
+func (c *Client) ResolveSpaceTags(spaceID string, names []string) ([]string, *APIError) {
+	tags, err := c.GetSpaceTags(spaceID)
+	if err != nil {
+		return nil, err
+	}
+	known := make(map[string]bool, len(tags))
+	for _, t := range tags {
+		known[strings.ToLower(t.Name)] = true
+	}
+	var bad []string
+	for _, n := range names {
+		if !known[strings.ToLower(n)] {
+			bad = append(bad, fmt.Sprintf("tag %q does not exist in the space\n  existing: %s", n, tagList(tags)))
+		}
+	}
+	return bad, nil
+}
+
+// tagList renders tag names for inlining into an error message, capped
+// like the other resolvers' candidate lists.
+func tagList(tags []Tag) string {
+	if len(tags) == 0 {
+		return "none (the space has no tags yet)"
+	}
+	names := make([]string, len(tags))
+	for i, t := range tags {
+		names[i] = t.Name
+	}
+	var more int
+	if len(names) > resolveListCap {
+		more = len(names) - resolveListCap
+		names = names[:resolveListCap]
+	}
+	out := strings.Join(names, ", ")
+	if more > 0 {
+		out += fmt.Sprintf(", and %d more", more)
+	}
+	return out
+}
+
 // spaceList renders spaces as `90121 "Holy Grail", 90122 "Webshop"`
 // for inlining into error messages, capped to stay readable.
 func spaceList(spaces []Space) string {

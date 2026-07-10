@@ -102,6 +102,13 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 	if d := t.DueDate.Date(); d != "" {
 		fmt.Fprintf(out, "  due: %s\n", d)
 	}
+	if len(t.Tags) > 0 {
+		names := make([]string, len(t.Tags))
+		for i, tg := range t.Tags {
+			names[i] = tg.Name
+		}
+		fmt.Fprintf(out, "  tags: %s\n", strings.Join(names, ", "))
+	}
 	fmt.Fprintf(out, "  url: %s\n", t.URL)
 
 	var help []string
@@ -173,13 +180,15 @@ type editRequest struct {
 	bodySet              bool
 	appendBody           string
 	appendSet            bool
+	addTags, remTags     []string
 }
 
 // hasChange reports whether any mutation flag was given.
 func (r *editRequest) hasChange() bool {
 	return r.statusSet || r.prioritySet || r.nameSet || r.dueSet ||
 		r.bodySet || r.appendSet ||
-		len(r.addTokens) > 0 || len(r.remTokens) > 0
+		len(r.addTokens) > 0 || len(r.remTokens) > 0 ||
+		len(r.addTags) > 0 || len(r.remTags) > 0
 }
 
 const editValidFlags = "--status, --assignee, --unassign, --priority, --name, --due, --body, --append-body, --add-tag, --remove-tag"
@@ -250,6 +259,20 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			}
 			r.appendBody = args[i]
 			r.appendSet = true
+		case "--add-tag":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--add-tag needs a value", "Run `clickup-axi tasks edit <id> --add-tag <tag>`")
+				return 2
+			}
+			r.addTags = append(r.addTags, splitTokens(args[i])...)
+		case "--remove-tag":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--remove-tag needs a value", "Run `clickup-axi tasks edit <id> --remove-tag <tag>`")
+				return 2
+			}
+			r.remTags = append(r.remTags, splitTokens(args[i])...)
 		case "--help", "-h":
 			fmt.Fprintln(out, tasksHelp)
 			return 0
@@ -288,6 +311,16 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		output.WriteError(out, "--append-body must not be empty",
 			fmt.Sprintf("Run `clickup-axi tasks edit %s --append-body \"<markdown>\"`", r.id))
 		return 2
+	}
+	// A tag named in both lists is a self-contradictory request.
+	for _, a := range r.addTags {
+		for _, rm := range r.remTags {
+			if strings.EqualFold(a, rm) {
+				output.WriteError(out, fmt.Sprintf("%q is in both --add-tag and --remove-tag", a),
+					"Name each tag in only one of --add-tag / --remove-tag")
+				return 2
+			}
+		}
 	}
 	if !r.hasChange() {
 		output.WriteError(out, "tasks edit needs a change\n  valid: "+editValidFlags,
@@ -352,6 +385,16 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 
+	// Tags to add must already exist in the space - a typo must not
+	// mint a new tag from an agent path. One GET covers all of them.
+	if len(r.addTags) > 0 {
+		bad, terr := c.ResolveSpaceTags(t.Space.ID, r.addTags)
+		if terr != nil {
+			return renderAPIError(out, terr)
+		}
+		fieldErrs = append(fieldErrs, bad...)
+	}
+
 	if len(fieldErrs) > 0 {
 		return renderFieldErrors(out, displayID(t), fieldErrs)
 	}
@@ -395,6 +438,32 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		remNames = append(remNames, assigneeName(u))
 	}
 
+	// Same idempotency for tags: drop adds already on the task and
+	// removes not on it, deduping case-insensitively within each set.
+	onTask := make(map[string]bool, len(t.Tags))
+	for _, tg := range t.Tags {
+		onTask[strings.ToLower(tg.Name)] = true
+	}
+	var addTags, remTags []string
+	seenTag := make(map[string]bool)
+	for _, tg := range r.addTags {
+		k := strings.ToLower(tg)
+		if onTask[k] || seenTag[k] {
+			continue
+		}
+		seenTag[k] = true
+		addTags = append(addTags, tg)
+	}
+	seenTag = make(map[string]bool)
+	for _, tg := range r.remTags {
+		k := strings.ToLower(tg)
+		if !onTask[k] || seenTag[k] {
+			continue
+		}
+		seenTag[k] = true
+		remTags = append(remTags, tg)
+	}
+
 	assigneeChanges := len(add) > 0 || len(rem) > 0
 	priorityChanges := prio != nil && !strings.EqualFold(currentPriority(t), priorityLabel(*prio))
 	dueChanges := due != nil && t.DueDate.Date() != dueLabel(*due)
@@ -402,8 +471,9 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	// A body edit is always a change: comparing markdown to the stored
 	// source is unreliable, and re-sending the same content is harmless.
 	bodyChanges := r.bodySet || r.appendSet
+	tagChanges := len(addTags) > 0 || len(remTags) > 0
 
-	if !statusChanges && !assigneeChanges && !priorityChanges && !dueChanges && !nameChanges && !bodyChanges {
+	if !statusChanges && !assigneeChanges && !priorityChanges && !dueChanges && !nameChanges && !bodyChanges && !tagChanges {
 		var reasons []string
 		if r.statusSet {
 			reasons = append(reasons, fmt.Sprintf("already has status %q", t.Status.Status))
@@ -423,6 +493,9 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		}
 		if r.nameSet {
 			reasons = append(reasons, fmt.Sprintf("name already %q", t.Name))
+		}
+		if len(r.addTags) > 0 || len(r.remTags) > 0 {
+			reasons = append(reasons, "tags already as requested")
 		}
 		fmt.Fprintf(out, "task: %s no changes (%s)\n", displayID(t), strings.Join(reasons, ", "))
 		return 0
@@ -460,8 +533,34 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		}
 		edit.Body = &content
 	}
-	if err := c.UpdateTask(t.ID, edit); err != nil {
-		return renderAPIError(out, err)
+
+	// The write phase: tags first (one call per tag - the API has no
+	// batch form), then the atomic PUT. POST and DELETE invert exactly,
+	// so if a later tag call or the PUT fails, the applied tag ops roll
+	// back and the edit stays all-or-nothing; everything was validated
+	// pre-flight, so a failure here is exceptional (outage, rate limit)
+	// or a workflow-restricted status transition.
+	var appliedAdds, appliedRems []string
+	for _, tg := range addTags {
+		if terr := c.AddTag(t.ID, tg); terr != nil {
+			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
+				fmt.Sprintf("tag %q could not be applied: %s", tg, terr.Message))
+		}
+		appliedAdds = append(appliedAdds, tg)
+	}
+	for _, tg := range remTags {
+		if terr := c.RemoveTag(t.ID, tg); terr != nil {
+			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
+				fmt.Sprintf("tag %q could not be removed: %s", tg, terr.Message))
+		}
+		appliedRems = append(appliedRems, tg)
+	}
+	putNeeded := statusChanges || assigneeChanges || priorityChanges || dueChanges || nameChanges || bodyChanges
+	if putNeeded {
+		if err := c.UpdateTask(t.ID, edit); err != nil {
+			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
+				fmt.Sprintf("the field changes could not be applied: %s", err.Message))
+		}
 	}
 	if statusChanges {
 		fmt.Fprintf(out, "task: %s status changed: %s -> %s\n", displayID(t), t.Status.Status, r.status)
@@ -484,6 +583,9 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		} else {
 			fmt.Fprintf(out, "task: %s description replaced (%d chars)\n", displayID(t), len([]rune(r.body)))
 		}
+	}
+	if tagChanges {
+		fmt.Fprintf(out, "task: %s tags%s%s\n", displayID(t), signedList("+", addTags), signedList("-", remTags))
 	}
 	output.WriteHelp(out, fmt.Sprintf("Run `clickup-axi tasks %s` to see the task", displayID(t)))
 	return 0
@@ -508,6 +610,40 @@ func renderFieldErrors(out io.Writer, id string, errs []string) int {
 		len(items), strings.Join(items, "\n  - "))
 	output.WriteError(out, msg,
 		fmt.Sprintf("Fix all the values above, then rerun `clickup-axi tasks edit %s ...` once", id))
+	return 1
+}
+
+// rollbackTags inverts already-applied tag ops (adds are deleted,
+// removes re-added) after a mid-write failure. It returns the ops that
+// could not be reverted, signed the way they were requested.
+func rollbackTags(c *clickup.Client, taskID string, adds, rems []string) []string {
+	var stuck []string
+	for _, tg := range adds {
+		if err := c.RemoveTag(taskID, tg); err != nil {
+			stuck = append(stuck, "+"+tg)
+		}
+	}
+	for _, tg := range rems {
+		if err := c.AddTag(taskID, tg); err != nil {
+			stuck = append(stuck, "-"+tg)
+		}
+	}
+	return stuck
+}
+
+// renderWriteFailure reports a write call that failed after pre-flight
+// passed. Applied tag ops are rolled back so the edit stays
+// all-or-nothing; whatever cannot be reverted is disclosed so the
+// stated task state stays truthful.
+func renderWriteFailure(out io.Writer, c *clickup.Client, t *clickup.Task, adds, rems []string, msg string) int {
+	id := displayID(t)
+	if stuck := rollbackTags(c, t.ID, adds, rems); len(stuck) > 0 {
+		fmt.Fprintf(out, "task: %s tags NOT rolled back: %s\n", id, strings.Join(stuck, " "))
+	} else if len(adds)+len(rems) > 0 {
+		fmt.Fprintf(out, "task: %s tag changes rolled back, nothing applied\n", id)
+	}
+	output.WriteError(out, msg,
+		fmt.Sprintf("Run `clickup-axi tasks %s` to see the task's current state, then retry", id))
 	return 1
 }
 

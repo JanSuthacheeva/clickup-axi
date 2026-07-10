@@ -21,6 +21,8 @@ type fakeClickUp struct {
 	putRaw     []string
 	postBodies []map[string]string
 	commentGET int
+	tagAdds    []string
+	tagRems    []string
 }
 
 func newFakeClickUp(t *testing.T) (*fakeClickUp, *clickup.Client) {
@@ -91,6 +93,43 @@ func (f *fakeClickUp) list(t *testing.T, id, name string, statuses ...string) {
 	body := fmt.Sprintf(`{"id": %q, "name": %q, "statuses": [%s]}`, id, name, strings.Join(items, ", "))
 	f.mux.HandleFunc("GET /api/v2/list/"+id, func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(body))
+	})
+}
+
+// spaceTags registers GET /space/{id}/tag so --add-tag validation can
+// check the space's existing tags.
+func (f *fakeClickUp) spaceTags(t *testing.T, spaceID string, names ...string) {
+	t.Helper()
+	items := make([]string, len(names))
+	for i, n := range names {
+		items[i] = fmt.Sprintf(`{"name": %q}`, n)
+	}
+	body := fmt.Sprintf(`{"tags": [%s]}`, strings.Join(items, ", "))
+	f.mux.HandleFunc("GET /api/v2/space/"+spaceID+"/tag", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(body))
+	})
+}
+
+// tagOps registers the per-tag add/remove endpoints and records calls.
+func (f *fakeClickUp) tagOps(t *testing.T, taskID string) {
+	t.Helper()
+	f.mux.HandleFunc("POST /api/v2/task/"+taskID+"/tag/{tag}", func(w http.ResponseWriter, r *http.Request) {
+		f.tagAdds = append(f.tagAdds, r.PathValue("tag"))
+		w.Write([]byte(`{}`))
+	})
+	f.mux.HandleFunc("DELETE /api/v2/task/"+taskID+"/tag/{tag}", func(w http.ResponseWriter, r *http.Request) {
+		f.tagRems = append(f.tagRems, r.PathValue("tag"))
+		w.Write([]byte(`{}`))
+	})
+}
+
+// failTagAdd makes adding one specific tag fail, for rollback tests.
+// The Go 1.22 mux picks this literal pattern over tagOps' {tag}.
+func (f *fakeClickUp) failTagAdd(t *testing.T, taskID, tag string) {
+	t.Helper()
+	f.mux.HandleFunc("POST /api/v2/task/"+taskID+"/tag/"+tag, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"err": "boom", "ECODE": "TAG_001"}`))
 	})
 }
 
@@ -897,6 +936,208 @@ func TestTaskEditAggregatesPriorityAndDueErrors(t *testing.T) {
 	}
 	if len(f.putBodies) != 0 {
 		t.Errorf("no PUT should happen when a field is invalid: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditAddsTag(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // space sp1, tags: backend
+	f.spaceTags(t, "sp1", "backend", "urgent-fix", "qa")
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "urgent-fix")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 tags +urgent-fix"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "urgent-fix" {
+		t.Errorf("tag adds = %v, want [urgent-fix]", f.tagAdds)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("a tags-only edit must not PUT the task: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditUnknownTagRefusedWithExisting(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "urgnt")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{`tag "urgnt" does not exist in the space`, "existing: backend, qa"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.tagAdds) != 0 || len(f.putBodies) != 0 {
+		t.Errorf("nothing may be written when a tag is unknown (adds=%v puts=%v)", f.tagAdds, f.putRaw)
+	}
+}
+
+func TestTaskEditRemovesTag(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // tag backend on the task
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--remove-tag", "backend")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 tags -backend"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "backend" {
+		t.Errorf("tag removes = %v, want [backend]", f.tagRems)
+	}
+}
+
+func TestTaskEditAddExistingTagIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // backend already on the task
+	f.spaceTags(t, "sp1", "backend", "qa")
+	// No tagOps handler: a tag call would 404 and surface in output.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "Backend")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := "no changes (tags already as requested)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditRemoveAbsentTagIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // qa not on the task
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--remove-tag", "qa")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := "no changes (tags already as requested)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditSameTagAddAndRemoveIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "qa", "--remove-tag", "QA")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "both --add-tag and --remove-tag") {
+		t.Errorf("output missing conflict message\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditTagsComposeWithFields(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.put(t, "abc123", http.StatusOK, `{}`)
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review", "--add-tag", "qa")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{"status changed: in progress -> in review", "tags +qa"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 1 || len(f.tagAdds) != 1 {
+		t.Errorf("want 1 PUT and 1 tag add, got %d PUTs, adds %v", len(f.putBodies), f.tagAdds)
+	}
+}
+
+func TestTaskEditInvalidStatusBlocksTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "bogus", "--add-tag", "qa")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if len(f.tagAdds) != 0 || len(f.putBodies) != 0 {
+		t.Errorf("a bad field must block the whole edit, tags included (adds=%v puts=%v)", f.tagAdds, f.putRaw)
+	}
+}
+
+func TestTaskEditPutFailureRollsBackTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.tagOps(t, "abc123")
+	f.put(t, "abc123", http.StatusInternalServerError, `{"err": "boom", "ECODE": "PUT_001"}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review", "--add-tag", "qa")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	// Tags go out before the PUT, so the add happened and was reverted.
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "qa" {
+		t.Errorf("tag adds = %v, want [qa] (applied before the PUT)", f.tagAdds)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "qa" {
+		t.Errorf("tag removes = %v, want [qa] (rolled back after the failed PUT)", f.tagRems)
+	}
+	if want := "tag changes rolled back, nothing applied"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditTagFailureRollsBackAppliedTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.spaceTags(t, "sp1", "backend", "qa", "api")
+	f.tagOps(t, "abc123")
+	f.failTagAdd(t, "abc123", "api")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "qa,api")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	// qa was applied, then rolled back when api failed.
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "qa" {
+		t.Errorf("tag adds = %v, want [qa]", f.tagAdds)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "qa" {
+		t.Errorf("tag removes = %v, want [qa] (rollback of the applied add)", f.tagRems)
+	}
+	for _, want := range []string{`tag "api" could not be applied`, "tag changes rolled back, nothing applied"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("no PUT may happen when a tag call fails first: %v", f.putRaw)
+	}
+}
+
+func TestTaskViewShowsTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "tags: backend"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
 	}
 }
 
