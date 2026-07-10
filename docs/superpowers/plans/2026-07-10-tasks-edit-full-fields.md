@@ -4,7 +4,7 @@
 
 **Goal:** Extend `tasks edit` with `--priority`, `--name`, `--due`, `--body`/`--append-body`, and `--add-tag`/`--remove-tag`, completing the edit field set of v1.0.0 step 3.
 
-**Architecture:** Every new field registers a check in the existing validate-all-then-write pre-flight pass (`fieldErrs` aggregation) and a mapping in the `TaskEdit` build; the single atomic `PUT /task/{id}` stays the only field write. Tags are separate ClickUp endpoints (`POST`/`DELETE /task/{id}/tag/{name}`), so they are validated pre-flight against the space's existing tags (one `GET /space/{id}/tag`) and applied after the PUT - from the agent's view the command still validates everything first and either fully applies or (on any validation failure) changes nothing. The human -> ClickUp mappings built here (priority 1-4, due epoch ms, markdown body) are the ones `tasks create` reuses in step 6.
+**Architecture:** Every new field registers a check in the existing validate-all-then-write pre-flight pass (`fieldErrs` aggregation) and a mapping in the `TaskEdit` build; the single atomic `PUT /task/{id}` stays the only field write. Tags are separate ClickUp endpoints (`POST`/`DELETE /task/{id}/tag/{name}`), so they are validated pre-flight against the space's existing tags (one `GET /space/{id}/tag`) and applied before the PUT; if a later tag call or the PUT itself fails, the already-applied tag ops are rolled back (POST/DELETE invert exactly) - from the agent's view the command validates everything first and either fully applies or changes nothing (a failed rollback is disclosed). The human -> ClickUp mappings built here (priority 1-4, due epoch ms, markdown body) are the ones `tasks create` reuses in step 6.
 
 **Tech Stack:** Go stdlib + `golang.org/x/term`; `httptest`-backed fakes for tests; AXI output conventions in `internal/output`.
 
@@ -22,11 +22,12 @@
 - Every agent-visible behavior has a test asserting exact output (`internal/cli/*_test.go`, `newFakeClickUp` harness).
 - The generated skill (`skills/clickup-axi/SKILL.md`) is never hand-edited; regenerate via `go run ./cmd/clickup-axi skill --write`. `go test ./...` and CI fail while it is stale.
 - Verify gate per task: `gofmt -l .` (empty), `go vet ./...`, `go test ./...`, `go build -o clickup-axi ./cmd/clickup-axi`.
-- Edits are atomic, never partial: all fields validate before the PUT; a validation failure means nothing was written. Tag calls after the PUT were validated pre-flight; an exceptional runtime failure there discloses exactly what landed.
+- Edits are atomic, never partial: all fields validate before anything is written; a validation failure means nothing was written. Validated tag calls run before the PUT; an exceptional runtime failure mid-write rolls back the already-applied tag ops (best effort, POST/DELETE invert exactly) so the edit stays all-or-nothing, and anything that could not be rolled back is disclosed.
 
 ## Design decisions (agreed with Jan, 2026-07-10)
 
-- **Tags + fields in one command:** everything (tags included) validates first; only when all checks pass do the PUT and the tag calls run. No partial updates on any validation failure.
+- **Tags + fields in one command:** everything (tags included) validates first; only when all checks pass does the write phase run. No partial updates on any validation failure.
+- **Write-phase failure (agreed 2026-07-10, artifact review):** tags apply first, the atomic PUT last; if a tag call or the PUT fails, the applied tag ops are rolled back best-effort (POST/DELETE invert exactly) so the edit stays all-or-nothing. A rollback failure is disclosed. Chosen over disclose-only and over a compensating field-revert PUT (which could clobber concurrent edits or hit a forbidden status transition).
 - **Unknown tag on `--add-tag`:** refused pre-flight with the space's existing tags inlined (a typo must not silently mint a tag). Creating tags is out of scope for `edit`.
 - **Body:** `--body` replaces, `--append-body` appends (separator: blank line). Jan asked for both modes. Empty values are usage errors; clearing a description is deferred (no `--body ""`).
 - **`--priority none` / `--due none`** clear their field (JSON `null`). Task 5 verifies clearing against the real API; the n8n community reports null-clearing as finicky, so the E2E step has an explicit contingency.
@@ -1083,7 +1084,7 @@ edit sends markdown_content on the same atomic PUT."
 
 **Interfaces:**
 - Consumes: `editRequest`/`cmdTaskEdit` as Task 2 left them; `splitTokens`; `signedList`; `resolveListCap` (clickup-internal, used by `tagList`); `clickup.Task.Space.ID` (new), `clickup.Task.Tags` (new).
-- Produces: `clickup.Tag{Name string}`; `(*clickup.Client).GetSpaceTags(spaceID string) ([]Tag, *APIError)`; `(*clickup.Client).ResolveSpaceTags(spaceID string, names []string) ([]string, *APIError)` (per-unknown-name messages, transport error separate); `(*clickup.Client).AddTag(taskID, tag string) *APIError`; `(*clickup.Client).RemoveTag(taskID, tag string) *APIError`; cli helper `renderTagFailure`.
+- Produces: `clickup.Tag{Name string}`; `(*clickup.Client).GetSpaceTags(spaceID string) ([]Tag, *APIError)`; `(*clickup.Client).ResolveSpaceTags(spaceID string, names []string) ([]string, *APIError)` (per-unknown-name messages, transport error separate); `(*clickup.Client).AddTag(taskID, tag string) *APIError`; `(*clickup.Client).RemoveTag(taskID, tag string) *APIError`; cli helpers `rollbackTags` (inverts applied tag ops, returns what could not be reverted) and `renderWriteFailure`.
 
 - [ ] **Step 1: Extend the fake with tag handlers**
 
@@ -1121,6 +1122,16 @@ func (f *fakeClickUp) tagOps(t *testing.T, taskID string) {
 	f.mux.HandleFunc("DELETE /api/v2/task/"+taskID+"/tag/{tag}", func(w http.ResponseWriter, r *http.Request) {
 		f.tagRems = append(f.tagRems, r.PathValue("tag"))
 		w.Write([]byte(`{}`))
+	})
+}
+
+// failTagAdd makes adding one specific tag fail, for rollback tests.
+// The Go 1.22 mux picks this literal pattern over tagOps' {tag}.
+func (f *fakeClickUp) failTagAdd(t *testing.T, taskID, tag string) {
+	t.Helper()
+	f.mux.HandleFunc("POST /api/v2/task/"+taskID+"/tag/"+tag, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"err": "boom", "ECODE": "TAG_001"}`))
 	})
 }
 ```
@@ -1226,7 +1237,7 @@ func TestTaskEditSameTagAddAndRemoveIsUsageError(t *testing.T) {
 	}
 }
 
-func TestTaskEditTagsComposeWithFieldsPutFirst(t *testing.T) {
+func TestTaskEditTagsComposeWithFields(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", editTaskJSON)
 	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
@@ -1245,6 +1256,58 @@ func TestTaskEditTagsComposeWithFieldsPutFirst(t *testing.T) {
 	}
 	if len(f.putBodies) != 1 || len(f.tagAdds) != 1 {
 		t.Errorf("want 1 PUT and 1 tag add, got %d PUTs, adds %v", len(f.putBodies), f.tagAdds)
+	}
+}
+
+func TestTaskEditPutFailureRollsBackTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.tagOps(t, "abc123")
+	f.put(t, "abc123", http.StatusInternalServerError, `{"err": "boom", "ECODE": "PUT_001"}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review", "--add-tag", "qa")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	// Tags go out before the PUT, so the add happened and was reverted.
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "qa" {
+		t.Errorf("tag adds = %v, want [qa] (applied before the PUT)", f.tagAdds)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "qa" {
+		t.Errorf("tag removes = %v, want [qa] (rolled back after the failed PUT)", f.tagRems)
+	}
+	if want := "tag changes rolled back, nothing applied"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditTagFailureRollsBackAppliedTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.spaceTags(t, "sp1", "backend", "qa", "api")
+	f.tagOps(t, "abc123")
+	f.failTagAdd(t, "abc123", "api")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "qa,api")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	// qa was applied, then rolled back when api failed.
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "qa" {
+		t.Errorf("tag adds = %v, want [qa]", f.tagAdds)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "qa" {
+		t.Errorf("tag removes = %v, want [qa] (rollback of the applied add)", f.tagRems)
+	}
+	for _, want := range []string{`tag "api" could not be applied`, "tag changes rolled back, nothing applied"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("no PUT may happen when a tag call fails first: %v", f.putRaw)
 	}
 }
 
@@ -1475,54 +1538,81 @@ Extend the no-op guard with `&& !tagChanges` and add the reason:
 		}
 ```
 
-Make the PUT conditional (a tags-only edit must not PUT) - replace the unconditional `if err := c.UpdateTask(...)` with:
+Replace the write phase (the unconditional `if err := c.UpdateTask(...)`) so tags apply first, the PUT last, and any mid-write failure rolls the applied tag ops back. Insert directly after the `TaskEdit` build:
 
 ```go
+	// The write phase: tags first (one call per tag - the API has no
+	// batch form), then the atomic PUT. POST and DELETE invert exactly,
+	// so if a later tag call or the PUT fails, the applied tag ops roll
+	// back and the edit stays all-or-nothing; everything was validated
+	// pre-flight, so a failure here is exceptional (outage, rate limit)
+	// or a workflow-restricted status transition.
+	var appliedAdds, appliedRems []string
+	for _, tg := range addTags {
+		if terr := c.AddTag(t.ID, tg); terr != nil {
+			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
+				fmt.Sprintf("tag %q could not be applied: %s", tg, terr.Message))
+		}
+		appliedAdds = append(appliedAdds, tg)
+	}
+	for _, tg := range remTags {
+		if terr := c.RemoveTag(t.ID, tg); terr != nil {
+			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
+				fmt.Sprintf("tag %q could not be removed: %s", tg, terr.Message))
+		}
+		appliedRems = append(appliedRems, tg)
+	}
 	putNeeded := statusChanges || assigneeChanges || priorityChanges || dueChanges || nameChanges || bodyChanges
 	if putNeeded {
 		if err := c.UpdateTask(t.ID, edit); err != nil {
-			return renderAPIError(out, err)
+			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
+				fmt.Sprintf("the field changes could not be applied: %s", err.Message))
 		}
 	}
 ```
 
-After the last field summary line (`bodyChanges`), apply the tags:
+The tags summary line stays with the other field summaries (after the `bodyChanges` output block):
 
 ```go
-	// Tags go out one call per tag after the PUT (the API has no batch
-	// form). Every tag was validated pre-flight, so a failure here is
-	// exceptional (outage, rate limit); disclose exactly what landed.
-	var appliedTags []string
-	for _, tg := range addTags {
-		if terr := c.AddTag(t.ID, tg); terr != nil {
-			return renderTagFailure(out, displayID(t), appliedTags, tg, terr)
-		}
-		appliedTags = append(appliedTags, "+"+tg)
-	}
-	for _, tg := range remTags {
-		if terr := c.RemoveTag(t.ID, tg); terr != nil {
-			return renderTagFailure(out, displayID(t), appliedTags, tg, terr)
-		}
-		appliedTags = append(appliedTags, "-"+tg)
-	}
 	if tagChanges {
 		fmt.Fprintf(out, "task: %s tags%s%s\n", displayID(t), signedList("+", addTags), signedList("-", remTags))
 	}
 ```
 
-Add the failure renderer after `renderFieldErrors`:
+Add the rollback helpers after `renderFieldErrors`:
 
 ```go
-// renderTagFailure reports a tag call that failed after pre-flight
-// passed - an exceptional API failure, since the tag was known-good.
-// Field edits and earlier tags already applied by then; stating them
-// keeps the disclosed state truthful.
-func renderTagFailure(out io.Writer, id string, applied []string, failed string, err *clickup.APIError) int {
-	if len(applied) > 0 {
-		fmt.Fprintf(out, "task: %s tags %s\n", id, strings.Join(applied, " "))
+// rollbackTags inverts already-applied tag ops (adds are deleted,
+// removes re-added) after a mid-write failure. It returns the ops that
+// could not be reverted, signed the way they were requested.
+func rollbackTags(c *clickup.Client, taskID string, adds, rems []string) []string {
+	var stuck []string
+	for _, tg := range adds {
+		if err := c.RemoveTag(taskID, tg); err != nil {
+			stuck = append(stuck, "+"+tg)
+		}
 	}
-	output.WriteError(out, fmt.Sprintf("tag %q could not be applied: %s", failed, err.Message),
-		fmt.Sprintf("Run `clickup-axi tasks %s` to see the task's current state, then retry the remaining tags", id))
+	for _, tg := range rems {
+		if err := c.AddTag(taskID, tg); err != nil {
+			stuck = append(stuck, "-"+tg)
+		}
+	}
+	return stuck
+}
+
+// renderWriteFailure reports a write call that failed after pre-flight
+// passed. Applied tag ops are rolled back so the edit stays
+// all-or-nothing; whatever cannot be reverted is disclosed so the
+// stated task state stays truthful.
+func renderWriteFailure(out io.Writer, c *clickup.Client, t *clickup.Task, adds, rems []string, msg string) int {
+	id := displayID(t)
+	if stuck := rollbackTags(c, t.ID, adds, rems); len(stuck) > 0 {
+		fmt.Fprintf(out, "task: %s tags NOT rolled back: %s\n", id, strings.Join(stuck, " "))
+	} else if len(adds)+len(rems) > 0 {
+		fmt.Fprintf(out, "task: %s tag changes rolled back, nothing applied\n", id)
+	}
+	output.WriteError(out, msg,
+		fmt.Sprintf("Run `clickup-axi tasks %s` to see the task's current state, then retry", id))
 	return 1
 }
 ```
@@ -1557,8 +1647,10 @@ git commit -m "feat(tasks): add and remove existing space tags in tasks edit" -m
 PUT: instead they join the same pre-flight pass - an unknown tag is
 refused with the space's tags inlined (a typo must not mint a tag)
 and nothing at all is written while any field is invalid. Validated
-tags apply one call each after the PUT; an exceptional failure there
-reports exactly what landed. The task view now shows tags."
+tags apply one call each before the PUT; if a later call or the PUT
+fails, the applied tag ops roll back (POST/DELETE invert exactly) so
+the edit stays all-or-nothing, and a failed rollback is disclosed.
+The task view now shows tags."
 ```
 
 ---
@@ -1715,6 +1807,8 @@ Run `./clickup-axi tasks HGAI-2378` and note name, priority, due, tags, and desc
 ```
 
 Expected: every mutation prints its summary line and exits 0; no-ops print `no changes (...)` and exit 0; failures aggregate, inline valid values, never leak raw ClickUp errors, and exit 1; every output ends with `help[]`.
+
+(The mid-write rollback path cannot be exercised safely against the real API - it needs an induced failure - so it is covered by the fake-backed tests only.)
 
 **Contingency (priority/due clearing):** if `--priority none` or `--due none` reports success but the follow-up view still shows the old value, the API ignored the JSON null. Then: try `"priority": 0` / `"due_date": 0`, or as a last resort omit-and-verify against ClickUp support docs; adjust `UpdateTask` in `internal/clickup/api.go` (Task 1) plus its test expectations, and note the actual encoding in a code comment. Re-run this step.
 
