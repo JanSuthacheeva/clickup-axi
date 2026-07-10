@@ -72,27 +72,29 @@ func (c *Client) GetSpaceTags(spaceID string) ([]Tag, *APIError) {
 }
 
 // ResolveSpaceTags checks the given names against the space's existing
-// tags (case-insensitive). It returns one message per unknown name,
-// each inlining the existing tags - the same recovery pattern as
+// tags (case-insensitive). It returns a lowercase-keyed map to each
+// tag's stored casing (so writes use the canonical name and never mint
+// a case-different duplicate) plus one message per unknown name, each
+// inlining the existing tags - the same recovery pattern as
 // ResolveSpace and ResolveMember, but aggregated so the edit's
 // pre-flight can report every bad tag at once. The *APIError is
 // transport-level only.
-func (c *Client) ResolveSpaceTags(spaceID string, names []string) ([]string, *APIError) {
+func (c *Client) ResolveSpaceTags(spaceID string, names []string) (map[string]string, []string, *APIError) {
 	tags, err := c.GetSpaceTags(spaceID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	known := make(map[string]bool, len(tags))
+	canonical := make(map[string]string, len(tags))
 	for _, t := range tags {
-		known[strings.ToLower(t.Name)] = true
+		canonical[strings.ToLower(t.Name)] = t.Name
 	}
 	var bad []string
 	for _, n := range names {
-		if !known[strings.ToLower(n)] {
+		if _, ok := canonical[strings.ToLower(n)]; !ok {
 			bad = append(bad, fmt.Sprintf("tag %q does not exist in the space\n  existing: %s", n, tagList(tags)))
 		}
 	}
-	return bad, nil
+	return canonical, bad, nil
 }
 
 // tagList renders tag names for inlining into an error message, capped

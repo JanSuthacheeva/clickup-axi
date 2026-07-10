@@ -386,12 +386,17 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	}
 
 	// Tags to add must already exist in the space - a typo must not
-	// mint a new tag from an agent path. One GET covers all of them.
+	// mint a new tag from an agent path. One GET covers all of them,
+	// and returns each tag's stored casing so the write uses the
+	// canonical name rather than the user's (validation is
+	// case-insensitive, but the API creates a tag on a non-exact name).
+	var addCanon map[string]string
 	if len(r.addTags) > 0 {
-		bad, terr := c.ResolveSpaceTags(t.Space.ID, r.addTags)
+		canon, bad, terr := c.ResolveSpaceTags(t.Space.ID, r.addTags)
 		if terr != nil {
 			return renderAPIError(out, terr)
 		}
+		addCanon = canon
 		fieldErrs = append(fieldErrs, bad...)
 	}
 
@@ -440,28 +445,32 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 
 	// Same idempotency for tags: drop adds already on the task and
 	// removes not on it, deduping case-insensitively within each set.
-	onTask := make(map[string]bool, len(t.Tags))
+	// The write uses the stored casing (the space tag for an add, the
+	// task tag for a remove), never the user's input, so a case-different
+	// name cannot mint a duplicate tag or miss the DELETE target.
+	onTask := make(map[string]string, len(t.Tags))
 	for _, tg := range t.Tags {
-		onTask[strings.ToLower(tg.Name)] = true
+		onTask[strings.ToLower(tg.Name)] = tg.Name
 	}
 	var addTags, remTags []string
 	seenTag := make(map[string]bool)
 	for _, tg := range r.addTags {
 		k := strings.ToLower(tg)
-		if onTask[k] || seenTag[k] {
+		if _, on := onTask[k]; on || seenTag[k] {
 			continue
 		}
 		seenTag[k] = true
-		addTags = append(addTags, tg)
+		addTags = append(addTags, addCanon[k])
 	}
 	seenTag = make(map[string]bool)
 	for _, tg := range r.remTags {
 		k := strings.ToLower(tg)
-		if !onTask[k] || seenTag[k] {
+		name, on := onTask[k]
+		if !on || seenTag[k] {
 			continue
 		}
 		seenTag[k] = true
-		remTags = append(remTags, tg)
+		remTags = append(remTags, name)
 	}
 
 	assigneeChanges := len(add) > 0 || len(rem) > 0

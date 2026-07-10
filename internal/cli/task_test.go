@@ -1000,6 +1000,45 @@ func TestTaskEditRemovesTag(t *testing.T) {
 	}
 }
 
+func TestTaskEditAddTagUsesSpaceCasing(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // space sp1, tags: backend
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.tagOps(t, "abc123")
+
+	// The space tag is "qa"; a case-different input must write "qa",
+	// not mint a duplicate "QA".
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "QA")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "qa" {
+		t.Errorf("tag adds = %v, want [qa] (space casing)", f.tagAdds)
+	}
+	if want := "task: abc123 tags +qa"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditRemoveTagUsesTaskCasing(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // tag "backend" on the task
+	f.tagOps(t, "abc123")
+
+	// The tag on the task is "backend"; a case-different input must
+	// DELETE "backend" so the removal actually targets the stored tag.
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--remove-tag", "BACKEND")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "backend" {
+		t.Errorf("tag removes = %v, want [backend] (task casing)", f.tagRems)
+	}
+	if want := "task: abc123 tags -backend"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
 func TestTaskEditAddExistingTagIsNoOp(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", editTaskJSON) // backend already on the task
