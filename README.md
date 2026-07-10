@@ -11,8 +11,9 @@ A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md)
 design principles: token-efficient output, structured errors, and
 next-step hints on every command. It covers the flows agents need most:
 listing open tasks (yours or a teammate's), finding a task by words in
-its title or description, viewing one task with its comments, changing
-its status and assignees, and commenting on it.
+its title or description, viewing one task with its comments, editing
+its status, assignees, priority, due date, name, description, or tags,
+and commenting on it.
 
 ## Installation
 
