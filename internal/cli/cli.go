@@ -84,6 +84,8 @@ func dispatch(args []string, c *clickup.Client, up *update.Updater, stdin io.Rea
 		return cmdAuth(args[1:], c, stdin, out)
 	case "context":
 		return cmdContext(args[1:], c, out)
+	case "setup":
+		return cmdSetup(args[1:], stdin, out)
 	case "update":
 		return update.Cmd(args[1:], up, out)
 	case "skill":
