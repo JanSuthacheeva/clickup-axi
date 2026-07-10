@@ -24,9 +24,21 @@ func resolveToken() string {
 }
 
 func TokenFilePath() (string, error) {
-	dir, err := os.UserConfigDir()
+	dir, err := userConfigDir()
 	if err != nil {
 		return "", err
 	}
 	return filepath.Join(dir, "clickup-axi", "token"), nil
+}
+
+// userConfigDir resolves the config root, honoring XDG_CONFIG_HOME on
+// every platform - os.UserConfigDir ignores it outside Linux, which
+// made tests that relocate the config dir silently touch the real
+// ~/Library/Application Support on macOS. Without the override the
+// platform default stands, so existing installs keep their paths.
+func userConfigDir() (string, error) {
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		return dir, nil
+	}
+	return os.UserConfigDir()
 }

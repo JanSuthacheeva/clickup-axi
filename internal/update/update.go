@@ -66,13 +66,24 @@ func NewFromEnv(skillContent string) *Updater {
 	if p, err := os.Executable(); err == nil {
 		u.ExePath = p
 	}
-	if dir, err := os.UserConfigDir(); err == nil {
+	if dir, err := userConfigDir(); err == nil {
 		u.CachePath = filepath.Join(dir, "clickup-axi", "update-check")
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		u.SkillPath = filepath.Join(home, ".claude", "skills", "clickup-axi", "SKILL.md")
 	}
 	return u
+}
+
+// userConfigDir resolves the config root, honoring XDG_CONFIG_HOME on
+// every platform - os.UserConfigDir ignores it outside Linux. Kept in
+// sync with the identical helper in internal/clickup; update must not
+// import other adapters.
+func userConfigDir() (string, error) {
+	if dir := os.Getenv("XDG_CONFIG_HOME"); dir != "" {
+		return dir, nil
+	}
+	return os.UserConfigDir()
 }
 
 // AssetName is the release asset for this platform, exported for tests
