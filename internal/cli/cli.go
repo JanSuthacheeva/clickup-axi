@@ -82,12 +82,14 @@ func dispatch(args []string, c *clickup.Client, up *update.Updater, stdin io.Rea
 		return cmdSearch(args[1:], c, out)
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
+	case "context":
+		return cmdContext(args[1:], c, out)
 	case "update":
 		return update.Cmd(args[1:], up, out)
 	case "skill":
 		return cmdSkill(args[1:], out)
 	default:
-		output.WriteError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, search, auth, update, skill", args[0]),
+		output.WriteError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, search, auth, setup, context, update, skill", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}
