@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-10
+
 ### Added
 
 - `tasks edit <id>` now covers the full field set alongside `--status`
@@ -128,7 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release, plus a passive once-per-24h update notice and healing of
   installed skill copies (`CLICKUP_AXI_NO_UPDATE_CHECK=1` disables).
 
-[Unreleased]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.2.0...v0.2.1
