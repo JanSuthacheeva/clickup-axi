@@ -42,7 +42,11 @@ type Task struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	TextContent string `json:"text_content"`
-	Status      struct {
+	// MarkdownDescription is the markdown source of the description,
+	// present because getTask always requests it; edits that append to
+	// the body build on it.
+	MarkdownDescription string `json:"markdown_description"`
+	Status              struct {
 		Status string `json:"status"`
 	} `json:"status"`
 	Priority *struct {

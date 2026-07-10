@@ -805,6 +805,80 @@ func TestTaskEditMultipleFieldsOneAtomicPut(t *testing.T) {
 	}
 }
 
+func TestTaskEditReplacesBody(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--body", "New **desc**")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 description replaced (12 chars)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"markdown_content":"New **desc**"`) {
+		t.Errorf("PUT raw = %v, want markdown_content replacement", f.putRaw)
+	}
+}
+
+func TestTaskEditAppendsBody(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // markdown: "After OAuth the user lands on a 404."
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--append-body", "Repro: safari only.")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 description appended (+19 chars)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0],
+		`"markdown_content":"After OAuth the user lands on a 404.\n\nRepro: safari only."`) {
+		t.Errorf("PUT raw = %v, want existing body + blank line + appended text", f.putRaw)
+	}
+}
+
+func TestTaskEditAppendToEmptyBodySkipsSeparator(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", strings.Replace(editTaskJSON,
+		`"markdown_description": "After OAuth the user lands on a 404.",`, "", 1))
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	_, code := runCLI(t, c, "tasks", "edit", "abc123", "--append-body", "First note.")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"markdown_content":"First note."`) {
+		t.Errorf("PUT raw = %v, want the appended text without a leading separator", f.putRaw)
+	}
+}
+
+func TestTaskEditBodyAndAppendConflict(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--body", "a", "--append-body", "b")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--body and --append-body cannot be combined") {
+		t.Errorf("output missing conflict message\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditEmptyBodyIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--body", "  ")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--body must not be empty") {
+		t.Errorf("output missing empty-body error\noutput:\n%s", out)
+	}
+}
+
 func TestTaskEditAggregatesPriorityAndDueErrors(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", editTaskJSON)

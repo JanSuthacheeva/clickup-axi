@@ -169,11 +169,16 @@ type editRequest struct {
 	nameSet              bool
 	due                  string
 	dueSet               bool
+	body                 string
+	bodySet              bool
+	appendBody           string
+	appendSet            bool
 }
 
 // hasChange reports whether any mutation flag was given.
 func (r *editRequest) hasChange() bool {
 	return r.statusSet || r.prioritySet || r.nameSet || r.dueSet ||
+		r.bodySet || r.appendSet ||
 		len(r.addTokens) > 0 || len(r.remTokens) > 0
 }
 
@@ -229,6 +234,22 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			}
 			r.due = args[i]
 			r.dueSet = true
+		case "--body":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--body needs a value", "Run `clickup-axi tasks edit <id> --body \"<markdown>\"`")
+				return 2
+			}
+			r.body = args[i]
+			r.bodySet = true
+		case "--append-body":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--append-body needs a value", "Run `clickup-axi tasks edit <id> --append-body \"<markdown>\"`")
+				return 2
+			}
+			r.appendBody = args[i]
+			r.appendSet = true
 		case "--help", "-h":
 			fmt.Fprintln(out, tasksHelp)
 			return 0
@@ -251,6 +272,21 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	if r.nameSet && strings.TrimSpace(r.name) == "" {
 		output.WriteError(out, "--name must not be empty",
 			fmt.Sprintf("Run `clickup-axi tasks edit %s --name \"<title>\"`", r.id))
+		return 2
+	}
+	if r.bodySet && r.appendSet {
+		output.WriteError(out, "--body and --append-body cannot be combined",
+			"Use --body to replace the description or --append-body to add to it")
+		return 2
+	}
+	if r.bodySet && strings.TrimSpace(r.body) == "" {
+		output.WriteError(out, "--body must not be empty",
+			fmt.Sprintf("Run `clickup-axi tasks edit %s --body \"<markdown>\"`", r.id))
+		return 2
+	}
+	if r.appendSet && strings.TrimSpace(r.appendBody) == "" {
+		output.WriteError(out, "--append-body must not be empty",
+			fmt.Sprintf("Run `clickup-axi tasks edit %s --append-body \"<markdown>\"`", r.id))
 		return 2
 	}
 	if !r.hasChange() {
@@ -363,8 +399,11 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	priorityChanges := prio != nil && !strings.EqualFold(currentPriority(t), priorityLabel(*prio))
 	dueChanges := due != nil && t.DueDate.Date() != dueLabel(*due)
 	nameChanges := r.nameSet && t.Name != r.name
+	// A body edit is always a change: comparing markdown to the stored
+	// source is unreliable, and re-sending the same content is harmless.
+	bodyChanges := r.bodySet || r.appendSet
 
-	if !statusChanges && !assigneeChanges && !priorityChanges && !dueChanges && !nameChanges {
+	if !statusChanges && !assigneeChanges && !priorityChanges && !dueChanges && !nameChanges && !bodyChanges {
 		var reasons []string
 		if r.statusSet {
 			reasons = append(reasons, fmt.Sprintf("already has status %q", t.Status.Status))
@@ -411,6 +450,16 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	if nameChanges {
 		edit.Name = r.name
 	}
+	if bodyChanges {
+		content := r.body
+		if r.appendSet {
+			content = r.appendBody
+			if base := taskMarkdown(t); base != "" {
+				content = base + "\n\n" + r.appendBody
+			}
+		}
+		edit.Body = &content
+	}
 	if err := c.UpdateTask(t.ID, edit); err != nil {
 		return renderAPIError(out, err)
 	}
@@ -428,6 +477,13 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	}
 	if nameChanges {
 		fmt.Fprintf(out, "task: %s renamed: %q -> %q\n", displayID(t), t.Name, r.name)
+	}
+	if bodyChanges {
+		if r.appendSet {
+			fmt.Fprintf(out, "task: %s description appended (+%d chars)\n", displayID(t), len([]rune(r.appendBody)))
+		} else {
+			fmt.Fprintf(out, "task: %s description replaced (%d chars)\n", displayID(t), len([]rune(r.body)))
+		}
 	}
 	output.WriteHelp(out, fmt.Sprintf("Run `clickup-axi tasks %s` to see the task", displayID(t)))
 	return 0
@@ -677,6 +733,16 @@ func listStatuses(c *clickup.Client, listID string) []string {
 func taskDescription(t *clickup.Task) string {
 	if t.TextContent != "" {
 		return t.TextContent
+	}
+	return t.Description
+}
+
+// taskMarkdown is the markdown source of the description, for edits
+// that build on it; tasks fetched without one fall back to the raw
+// description.
+func taskMarkdown(t *clickup.Task) string {
+	if t.MarkdownDescription != "" {
+		return t.MarkdownDescription
 	}
 	return t.Description
 }

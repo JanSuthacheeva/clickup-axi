@@ -29,8 +29,9 @@ func (c *Client) CreateComment(taskID, text string) *APIError {
 type TaskEdit struct {
 	Status       string
 	Name         string
-	Priority     *int   // nil = unchanged, 0 = clear, 1 (urgent) .. 4 (low)
-	DueDate      *int64 // nil = unchanged, 0 = clear, else millisecond epoch
+	Priority     *int    // nil = unchanged, 0 = clear, 1 (urgent) .. 4 (low)
+	DueDate      *int64  // nil = unchanged, 0 = clear, else millisecond epoch
+	Body         *string // nil = unchanged, else full markdown replacement
 	AddAssignees []int64
 	RemAssignees []int64
 }
@@ -58,6 +59,9 @@ func (c *Client) UpdateTask(taskID string, edit TaskEdit) *APIError {
 			// Date-only: the CLI takes and renders dates, not times.
 			body["due_date_time"] = false
 		}
+	}
+	if edit.Body != nil {
+		body["markdown_content"] = *edit.Body
 	}
 	if len(edit.AddAssignees) > 0 || len(edit.RemAssignees) > 0 {
 		add := edit.AddAssignees
