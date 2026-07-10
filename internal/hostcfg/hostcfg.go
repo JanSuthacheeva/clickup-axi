@@ -161,9 +161,3 @@ func shellQuote(s string) string {
 func failf(host, path, format string, a ...any) Report {
 	return Report{Host: host, Path: path, Action: Failed, Detail: fmt.Sprintf(format, a...)}
 }
-
-// Stubs replaced by opencode.go (Task 3).
-func installOpenCode(t Target, hookCmd string) Report {
-	return failf(t.Host, t.Path, "not implemented")
-}
-func removeOpenCode(t Target) Report { return failf(t.Host, t.Path, "not implemented") }
