@@ -151,7 +151,7 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 					text += "..."
 				}
 			}
-			fmt.Fprintf(out, "  %s,%s,%s\n", output.ToonCell(cm.User.Username), cm.Date.Date(), output.ToonCell(text))
+			fmt.Fprintf(out, "  %s,%s,%s\n", output.ToonCell(cm.User.Username), cm.Date.InstantDate(), output.ToonCell(text))
 		}
 		if len(shown) < len(comments) || len(comments) == clickup.CommentsPageSize {
 			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all fetched comments", displayID(t)))
