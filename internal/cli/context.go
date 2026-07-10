@@ -19,8 +19,11 @@ const contextTaskCap = 5
 
 // contextBudget caps the whole ClickUp fetch. A session start must
 // never hang on a slow network; past the budget the dashboard degrades
-// instead. Variable so tests can shrink it.
-var contextBudget = 3 * time.Second
+// instead. 5s fits the measured cold-start profile (a single ClickUp
+// GET can take ~3s); an unreachable host still fails fast - the budget
+// only bites while requests are genuinely in flight. Variable so tests
+// can shrink it.
+var contextBudget = 5 * time.Second
 
 var contextHelpText = fmt.Sprintf(`clickup-axi context
 
@@ -55,17 +58,29 @@ func cmdContext(args []string, c *clickup.Client, out io.Writer) int {
 	}
 	ch := make(chan fetched, 1)
 	go func() {
-		team, err := c.SelectTeam()
-		if err != nil {
-			ch <- fetched{err: err}
+		// SelectTeam and GetUser are independent - overlapping them
+		// saves a round trip on the latency-critical session-start path.
+		type teamResult struct {
+			team *clickup.Team
+			err  *clickup.APIError
+		}
+		tc := make(chan teamResult, 1)
+		go func() {
+			team, err := c.SelectTeam()
+			tc <- teamResult{team: team, err: err}
+		}()
+		u, uErr := c.GetUser()
+		tr := <-tc
+		// The team error wins: it carries the workspace-pin recovery hint.
+		if tr.err != nil {
+			ch <- fetched{err: tr.err}
 			return
 		}
-		u, err := c.GetUser()
-		if err != nil {
-			ch <- fetched{err: err}
+		if uErr != nil {
+			ch <- fetched{err: uErr}
 			return
 		}
-		tasks, last, err := c.GetTeamTasksPage(team.ID, clickup.TaskQuery{Assignees: []int64{u.ID}})
+		tasks, last, err := c.GetTeamTasksPage(tr.team.ID, clickup.TaskQuery{Assignees: []int64{u.ID}})
 		ch <- fetched{tasks: tasks, lastPage: last, err: err}
 	}()
 
