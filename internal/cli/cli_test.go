@@ -114,20 +114,23 @@ func TestTopHelpGolden(t *testing.T) {
 	want := `clickup-axi <command> <subcommand> [flags]
 
 commands:
-  tasks               List open tasks (yours by default)
-                      (--assignee <who> for a teammate, --space <name|id> to narrow)
-  tasks <id>          Show one task with its newest comments
-                      (internal id like 86ey3tx8m or custom like HGAI-2316)
-  search "<query>"    Find your tasks by words in the title or description
-  tasks edit <id>     Change status, assignees, priority, name, due date, description, tags
-  tasks comment <id>  Add a comment to a task (--text "<text>")
-  auth login          Store a personal API token (read from stdin)
-  auth logout         Remove the stored token
-  setup               Install the session-start hook (Claude Code, Codex, OpenCode)
-                      (--global or --project; --remove uninstalls)
-  context             Session-start dashboard printed by the installed hook
-  update              Update the binary to the latest release
-  skill               Generate or verify the agent skill (maintainer command)
+  tasks                    List open tasks (yours by default)
+                           (--assignee <who> for a teammate, --space <name|id> to narrow)
+  tasks <id>               Show one task with its newest comments
+                           (internal id like 86ey3tx8m or custom like HGAI-2316)
+  search "<query>"         Find your tasks by words in the title or description
+  spaces                   List active spaces (projects) in the workspace
+  lists --space <name|id>  List active Lists in one space
+                           (--archived shows archived Lists; folder context is included)
+  tasks edit <id>          Change status, assignees, priority, name, due date, description, tags
+  tasks comment <id>       Add a comment to a task (--text "<text>")
+  auth login               Store a personal API token (read from stdin)
+  auth logout              Remove the stored token
+  setup                    Install the session-start hook (Claude Code, Codex, OpenCode)
+                           (--global or --project; --remove uninstalls)
+  context                  Session-start dashboard printed by the installed hook
+  update                   Update the binary to the latest release
+  skill                    Generate or verify the agent skill (maintainer command)
 
 auth:
   clickup-axi auth login   (guides you to a token, hidden paste)
