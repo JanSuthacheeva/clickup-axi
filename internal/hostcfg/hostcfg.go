@@ -162,13 +162,7 @@ func failf(host, path, format string, a ...any) Report {
 	return Report{Host: host, Path: path, Action: Failed, Detail: fmt.Sprintf(format, a...)}
 }
 
-// Stubs replaced by hooksjson.go (Task 2) and opencode.go (Task 3).
-func claudeGroups(hookCmd string) []any { return nil }
-func codexGroups(hookCmd string) []any  { return nil }
-func installHooksJSON(t Target, groups []any) Report {
-	return failf(t.Host, t.Path, "not implemented")
-}
-func removeHooksJSON(t Target) Report { return failf(t.Host, t.Path, "not implemented") }
+// Stubs replaced by opencode.go (Task 3).
 func installOpenCode(t Target, hookCmd string) Report {
 	return failf(t.Host, t.Path, "not implemented")
 }
