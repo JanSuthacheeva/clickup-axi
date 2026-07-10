@@ -337,16 +337,22 @@ func TestTaskEditAggregatesMultipleBadTokensInOneField(t *testing.T) {
 }
 
 // editTaskJSON gives the task a current assignee (jan, id 42) that lines
-// up with membersTeamJSON (jan 42, Ting Nguyen 189, Tinh Tran 190), so
-// add / remove / idempotency all resolve against consistent ids.
+// up with membersTeamJSON (jan 42, Ting Nguyen 189, Tinh Tran 190), plus
+// a priority, due date, markdown body, space, and tags, so every edit
+// field can prove set / clear / no-op behavior against known state.
 const editTaskJSON = `{
 	"id": "abc123",
 	"custom_id": "AIKK-99",
 	"name": "Fix login redirect",
 	"status": {"status": "in progress"},
+	"priority": {"priority": "high"},
+	"due_date": "1783296000000",
+	"markdown_description": "After OAuth the user lands on a 404.",
 	"url": "https://app.clickup.com/t/abc123",
 	"assignees": [{"id": 42, "username": "jan"}],
-	"list": {"id": "901234", "name": "Sprint 14"}
+	"list": {"id": "901234", "name": "Sprint 14"},
+	"space": {"id": "sp1"},
+	"tags": [{"name": "backend"}]
 }`
 
 func TestTaskEditAddsAssigneeByName(t *testing.T) {
@@ -583,12 +589,240 @@ func TestTaskEditUnknownFlagListsValid(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", editTaskJSON)
 
-	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "high")
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--color", "red")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if want := "valid: --status, --assignee, --unassign"; !strings.Contains(out, want) {
+	if want := "valid: --status, --assignee, --unassign, --priority, --name, --due, --body, --append-body, --add-tag, --remove-tag"; !strings.Contains(out, want) {
 		t.Errorf("output missing valid-flag list\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditSetsPriority(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "urgent")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 priority: high -> urgent"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"priority":1`) {
+		t.Errorf("PUT raw = %v, want priority 1", f.putRaw)
+	}
+}
+
+func TestTaskEditClearsPriority(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "none")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 priority: high -> none"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"priority":null`) {
+		t.Errorf("PUT raw = %v, want priority null", f.putRaw)
+	}
+}
+
+func TestTaskEditSamePriorityIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // priority high
+	// No PUT handler: a PUT would 404 and surface in output.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "High")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := "no changes (priority already high)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called for a no-op priority: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditInvalidPriorityListsValid(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "valid: urgent, high, normal, low, none"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called despite invalid priority: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditSetsDueDate(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "2026-07-20")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 due: 2026-07-06 -> 2026-07-20"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"due_date":1784505600000`) {
+		t.Errorf("PUT raw = %v, want due_date 1784505600000", f.putRaw)
+	}
+	if !strings.Contains(f.putRaw[0], `"due_date_time":false`) {
+		t.Errorf("PUT raw = %v, want due_date_time false", f.putRaw)
+	}
+}
+
+func TestTaskEditClearsDueDate(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "none")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 due: 2026-07-06 -> none"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"due_date":null`) {
+		t.Errorf("PUT raw = %v, want due_date null", f.putRaw)
+	}
+}
+
+func TestTaskEditSameDueIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // due 2026-07-06
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "2026-07-06")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := "no changes (due already 2026-07-06)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called for a no-op due date: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditBadDueDateIsFieldError(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "tomorrow")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "valid: YYYY-MM-DD"; !strings.Contains(out, want) {
+		t.Errorf("output missing date-format hint\noutput:\n%s", out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called despite invalid due date: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditRenames(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--name", "Fix OAuth redirect")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := `task: abc123 renamed: "Fix login redirect" -> "Fix OAuth redirect"`; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"name":"Fix OAuth redirect"`) {
+		t.Errorf("PUT raw = %v, want the new name", f.putRaw)
+	}
+}
+
+func TestTaskEditSameNameIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--name", "Fix login redirect")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := `no changes (name already "Fix login redirect")`; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called for a no-op rename: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditEmptyNameIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--name", "   ")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--name must not be empty") {
+		t.Errorf("output missing empty-name error\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditMultipleFieldsOneAtomicPut(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123",
+		"--status", "in review", "--priority", "low", "--due", "2026-07-20", "--name", "Fix OAuth redirect")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if len(f.putBodies) != 1 {
+		t.Fatalf("want 1 atomic PUT, got %d: %v", len(f.putBodies), f.putRaw)
+	}
+	for _, want := range []string{`"status":"in review"`, `"priority":4`, `"due_date":1784505600000`, `"name":"Fix OAuth redirect"`} {
+		if !strings.Contains(f.putRaw[0], want) {
+			t.Errorf("PUT raw missing %s\nraw: %s", want, f.putRaw[0])
+		}
+	}
+	for _, want := range []string{"status changed", "priority: high -> low", "due: 2026-07-06 -> 2026-07-20", "renamed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+func TestTaskEditAggregatesPriorityAndDueErrors(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker", "--due", "tomorrow")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "2 fields cannot be applied") {
+		t.Errorf("output missing aggregated-failure header\noutput:\n%s", out)
+	}
+	for _, want := range []string{"urgent, high, normal, low, none", "YYYY-MM-DD"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("aggregated output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("no PUT should happen when a field is invalid: %v", f.putRaw)
 	}
 }
 
