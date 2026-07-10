@@ -53,13 +53,16 @@ func Run(args []string, c *clickup.Client, up *update.Updater, stdin io.Reader, 
 
 // postCommandAllowed excludes outputs that must stay byte-exact
 // (skill) or are self-referential (update, version, help) from the
-// post-command maintenance lines.
+// post-command maintenance lines. It also excludes context: that is
+// the latency-critical session-start hook, and its output is injected
+// as ambient context into every session, where an update notice or a
+// skill-heal line would be noise on the hot path.
 func postCommandAllowed(args []string) bool {
 	if len(args) == 0 {
 		return true
 	}
 	switch args[0] {
-	case "skill", "update", "--version", "-v", "version", "--help", "-h", "help":
+	case "skill", "update", "--version", "-v", "version", "--help", "-h", "help", "context":
 		return false
 	}
 	return true

@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   be explicit.
 - `context`, the hook's payload: a compact dashboard of the user's 5
   most urgent open tasks (due-soonest first, total stated) behind a
-  hard 3-second budget. It always exits 0 and degrades to a one-line
+  hard 5-second budget. It always exits 0 and degrades to a one-line
   reason (not authenticated, workspace unpinned, API unreachable) so a
   broken network can never break a session start.
 
