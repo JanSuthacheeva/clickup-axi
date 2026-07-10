@@ -43,6 +43,8 @@ clickup-axi tasks                    # your open tasks
 clickup-axi tasks --assignee ting    # a teammate's open tasks (names resolve)
 clickup-axi tasks HGAI-2316          # one task with newest comments
 clickup-axi search "oauth redirect"  # find your tasks by title/description text
+clickup-axi spaces                   # active projects in the workspace
+clickup-axi lists --space "Webshop"  # Lists in a project, with folder context
 clickup-axi tasks edit HGAI-2316 --status "in review"
 clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me   # reassign (names resolve)
 clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01   # multi-field edit, one atomic call

@@ -47,6 +47,23 @@ var surface = []command{
 		comment: "find YOUR tasks by words in the title or description",
 	},
 	{
+		usage:   "spaces",
+		summary: "List active spaces (projects) in the workspace",
+		skill:   "clickup-axi spaces",
+		comment: "active spaces (projects) available in the workspace",
+	},
+	{
+		usage:   "lists --space <name|id>",
+		summary: "List active Lists in one space",
+		note:    "(--archived shows archived Lists; folder context is included)",
+		skill:   `clickup-axi lists --space "<space>"`,
+		comment: "Lists in one space, including folder context; names resolve case-insensitively",
+	},
+	{
+		skill:   `clickup-axi lists --space "<space>" --archived`,
+		comment: "archived Lists in the selected space",
+	},
+	{
 		skill:   `clickup-axi search "<query>" --assignee all --space "<space>"`,
 		comment: "widen beyond your tasks; space and assignee resolve by name",
 	},

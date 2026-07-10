@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `spaces` lists the active spaces in the selected workspace. `lists
+  --space <name|id>` discovers active Lists in one space, including
+  folder context to distinguish duplicate names; `--archived` instead
+  returns archived Lists from both active and archived folders. Missing
+  scopes and invalid flags fail with inline recovery commands, and an
+  upstream failure never prints a partial inventory.
 - `setup` installs a session-start hook for Claude Code
   (`~/.claude/settings.json`), Codex (`~/.codex/hooks.json`), and
   OpenCode (a managed plugin file), so agent sessions begin with the

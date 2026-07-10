@@ -21,15 +21,21 @@ const description = "Manage ClickUp tasks - an AXI (agent-ergonomic) CLI"
 // help text and the generated agent skill can never disagree about
 // which commands exist.
 func topHelp() string {
+	width := 20
+	for _, c := range surface {
+		if c.usage != "" && len(c.usage)+2 > width {
+			width = len(c.usage) + 2
+		}
+	}
 	var b strings.Builder
 	b.WriteString("clickup-axi <command> <subcommand> [flags]\n\ncommands:\n")
 	for _, c := range surface {
 		if c.usage == "" {
 			continue
 		}
-		fmt.Fprintf(&b, "  %-20s%s\n", c.usage, c.summary)
+		fmt.Fprintf(&b, "  %-*s%s\n", width, c.usage, c.summary)
 		if c.note != "" {
-			fmt.Fprintf(&b, "  %-20s%s\n", "", c.note)
+			fmt.Fprintf(&b, "  %-*s%s\n", width, "", c.note)
 		}
 	}
 	b.WriteString(`
@@ -83,6 +89,10 @@ func dispatch(args []string, c *clickup.Client, up *update.Updater, stdin io.Rea
 		return cmdTasks(args[1:], c, out)
 	case "search":
 		return cmdSearch(args[1:], c, out)
+	case "spaces":
+		return cmdSpaces(args[1:], c, out)
+	case "lists":
+		return cmdLists(args[1:], c, out)
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
 	case "context":
@@ -94,7 +104,7 @@ func dispatch(args []string, c *clickup.Client, up *update.Updater, stdin io.Rea
 	case "skill":
 		return cmdSkill(args[1:], out)
 	default:
-		output.WriteError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, search, auth, setup, context, update, skill", args[0]),
+		output.WriteError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, search, spaces, lists, auth, setup, context, update, skill", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}

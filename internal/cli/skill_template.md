@@ -4,7 +4,8 @@ description: >
   Manage ClickUp tasks via the clickup-axi CLI - list tasks assigned to
   the user, view a task with its comments and description by id, change
   a task's status, assignees, priority, due date, name, description, or
-  tags, and add a comment to a task. Use when the user mentions ClickUp,
+  tags, add a comment to a task, or discover a ClickUp space or List. Use
+  when the user mentions ClickUp,
   sprint tasks, tickets with ids like HGAI-2316 or ECOM-2254, asks what
   is on their plate, or wants a task looked up, summarized, commented
   on, reassigned, retitled, reprioritized, rescheduled, tagged, or
@@ -95,6 +96,11 @@ inlined, so pick one and retry once. Time references like "two months
 ago" are fuzzy - use a generous `--updated-after`/`--updated-before`
 window or only one end, and remember tasks from past work are often in
 the final closed status (`--include-closed`).
+
+`spaces` lists the active projects in the selected workspace. Use
+`lists --space "<name|id>"` to discover the Lists in one project before
+creating or moving work; its folder column distinguishes duplicate List
+names. Use `--archived` only when the user needs archived Lists.
 
 ## Session hook
 
