@@ -107,6 +107,7 @@ func cmdSetup(args []string, stdin io.Reader, out io.Writer) int {
 	hookCmd := setupHookCommand()
 	fmt.Fprintf(out, "setup: session hook (%s)\n", scopeName(scope))
 	exit := 0
+	hookPresent := false
 	for _, t := range hostcfg.Targets(scope, home, cwd) {
 		if app != "" && t.Host != app {
 			continue
@@ -118,18 +119,24 @@ func cmdSetup(args []string, stdin io.Reader, out io.Writer) int {
 			r = hostcfg.Install(t, hookCmd)
 		}
 		fmt.Fprintf(out, "  %s\n", renderReport(r))
-		if r.Action == hostcfg.Failed {
+		switch r.Action {
+		case hostcfg.Failed:
 			exit = 1
+		case hostcfg.Installed, hostcfg.Repaired, hostcfg.AlreadyInstalled:
+			hookPresent = true
 		}
 	}
 
 	scopeFlag := "--" + scopeName(scope)
-	if remove {
+	switch {
+	case remove:
 		output.WriteHelp(out, "Run `clickup-axi setup "+scopeFlag+"` to reinstall")
-	} else {
+	case hookPresent:
 		output.WriteHelp(out,
 			"Start a new agent session to load the ClickUp dashboard",
 			"Run `clickup-axi setup "+scopeFlag+" --remove` to uninstall")
+	default:
+		output.WriteHelp(out, "No supported host configs found; install an agent host, then rerun `clickup-axi setup "+scopeFlag+"`")
 	}
 	return exit
 }

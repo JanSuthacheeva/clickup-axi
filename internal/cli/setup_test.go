@@ -97,6 +97,26 @@ func TestSetupGlobalInstallsDetectedHosts(t *testing.T) {
 	}
 }
 
+func TestSetupNoHostsSuppressesLoadHint(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	old := setupHookCommand
+	setupHookCommand = func() string { return "clickup-axi context" }
+	t.Cleanup(func() { setupHookCommand = old })
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "setup", "--global")
+	if code != 0 {
+		t.Fatalf("exit code = %d\noutput:\n%s", code, out)
+	}
+	if strings.Contains(out, "Start a new agent session to load the ClickUp dashboard") {
+		t.Errorf("load hint shown when nothing was installed:\n%s", out)
+	}
+	if !strings.Contains(out, "No supported host configs found") {
+		t.Errorf("missing guidance when no hosts detected:\n%s", out)
+	}
+}
+
 func TestSetupRerunIsNoOp(t *testing.T) {
 	setupHome(t)
 	_, c := newFakeClickUp(t)
