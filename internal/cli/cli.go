@@ -53,13 +53,16 @@ func Run(args []string, c *clickup.Client, up *update.Updater, stdin io.Reader, 
 
 // postCommandAllowed excludes outputs that must stay byte-exact
 // (skill) or are self-referential (update, version, help) from the
-// post-command maintenance lines.
+// post-command maintenance lines. It also excludes context: that is
+// the latency-critical session-start hook, and its output is injected
+// as ambient context into every session, where an update notice or a
+// skill-heal line would be noise on the hot path.
 func postCommandAllowed(args []string) bool {
 	if len(args) == 0 {
 		return true
 	}
 	switch args[0] {
-	case "skill", "update", "--version", "-v", "version", "--help", "-h", "help":
+	case "skill", "update", "--version", "-v", "version", "--help", "-h", "help", "context":
 		return false
 	}
 	return true
@@ -82,12 +85,16 @@ func dispatch(args []string, c *clickup.Client, up *update.Updater, stdin io.Rea
 		return cmdSearch(args[1:], c, out)
 	case "auth":
 		return cmdAuth(args[1:], c, stdin, out)
+	case "context":
+		return cmdContext(args[1:], c, out)
+	case "setup":
+		return cmdSetup(args[1:], stdin, out)
 	case "update":
 		return update.Cmd(args[1:], up, out)
 	case "skill":
 		return cmdSkill(args[1:], out)
 	default:
-		output.WriteError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, search, auth, update, skill", args[0]),
+		output.WriteError(out, fmt.Sprintf("unknown command %q\n  valid: tasks, search, auth, setup, context, update, skill", args[0]),
 			"Run `clickup-axi --help`")
 		return 2
 	}

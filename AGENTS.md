@@ -42,6 +42,10 @@ rule: imports only point inward, no package imports its caller.
   types, id resolution, token storage, `APIError` translation
 - `internal/update` - driven adapter for GitHub releases: self-update,
   passive check, skill healing; never imports `cli`
+- `internal/hostcfg` - driven adapter for agent-host configuration:
+  installs, repairs, and removes the `context` session hook in Claude
+  Code, Codex, and OpenCode configs; knows nothing about ClickUp, never
+  imports `cli`
 - `internal/output` - AXI output conventions (`help[]`, structured
   errors, TOON cells, truncation), shared by `cli` and `update`
 - `internal/version` - ldflags injection target and fallback resolution

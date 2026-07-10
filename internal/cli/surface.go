@@ -81,6 +81,17 @@ var surface = []command{
 		summary: "Remove the stored token",
 	},
 	{
+		usage:   "setup",
+		summary: "Install the session-start hook (Claude Code, Codex, OpenCode)",
+		note:    "(--global or --project; --remove uninstalls)",
+		skill:   "clickup-axi setup --global",
+		comment: "install the session-start dashboard hook (only after user consent)",
+	},
+	{
+		usage:   "context",
+		summary: "Session-start dashboard printed by the installed hook",
+	},
+	{
 		usage:   "update",
 		summary: "Update the binary to the latest release",
 		skill:   "clickup-axi update",

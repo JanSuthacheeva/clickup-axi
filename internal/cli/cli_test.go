@@ -70,6 +70,28 @@ func TestHomeFlagsAnInvisiblePin(t *testing.T) {
 	}
 }
 
+// TestPostCommandAllowed pins which commands skip the post-command
+// maintenance lines: byte-exact/self-referential outputs and context,
+// the latency-critical session-start hook whose output is injected as
+// ambient context.
+func TestPostCommandAllowed(t *testing.T) {
+	excluded := []string{"skill", "update", "version", "--version", "-v", "help", "--help", "-h", "context"}
+	for _, cmd := range excluded {
+		if postCommandAllowed([]string{cmd}) {
+			t.Errorf("postCommandAllowed(%q) = true, want false", cmd)
+		}
+	}
+	allowed := []string{"tasks", "search", "auth", "setup"}
+	for _, cmd := range allowed {
+		if !postCommandAllowed([]string{cmd}) {
+			t.Errorf("postCommandAllowed(%q) = false, want true", cmd)
+		}
+	}
+	if !postCommandAllowed(nil) {
+		t.Errorf("postCommandAllowed(nil) = false, want true (home view)")
+	}
+}
+
 // TestVersionFallsBackToDev pins the source-build fallback; release
 // binaries override it via -ldflags (asserted by the release workflow
 // building with -X on internal/version.Version).
@@ -101,6 +123,9 @@ commands:
   tasks comment <id>  Add a comment to a task (--text "<text>")
   auth login          Store a personal API token (read from stdin)
   auth logout         Remove the stored token
+  setup               Install the session-start hook (Claude Code, Codex, OpenCode)
+                      (--global or --project; --remove uninstalls)
+  context             Session-start dashboard printed by the installed hook
   update              Update the binary to the latest release
   skill               Generate or verify the agent skill (maintainer command)
 
