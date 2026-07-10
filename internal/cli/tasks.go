@@ -33,11 +33,18 @@ view flags (with an id):
   --full         complete description and all fetched comments
 
 edit <id> (mutations; "edit" is a reserved word, not an id):
-  --status "<status>"  change status; valid statuses are echoed
-                       when the status does not match
-  --assignee <who>     add an assignee (repeatable, comma-separated);
-                       who = me | member name | id
-  --unassign <who>     remove an assignee (repeatable, comma-separated)
+  --status "<status>"    change status; valid statuses are echoed
+                         when the status does not match
+  --assignee <who>       add an assignee (repeatable, comma-separated);
+                         who = me | member name | id
+  --unassign <who>       remove an assignee (repeatable, comma-separated)
+  --priority <p>         urgent | high | normal | low | none (= clear)
+  --name "<title>"       rename the task
+  --due <date>           set the due date (YYYY-MM-DD) or none (= clear)
+  --body "<markdown>"    replace the description
+  --append-body "<md>"   append to the description instead
+  --add-tag <tag>        add an existing space tag (repeatable, comma-separated)
+  --remove-tag <tag>     remove a tag (repeatable, comma-separated)
 
 comment <id> ("comment" is a reserved word, not an id):
   --text "<text>"  add a comment to the task
@@ -50,6 +57,8 @@ examples:
   clickup-axi tasks 86ey3tx8m --full
   clickup-axi tasks edit HGAI-2316 --status "in review"
   clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me
+  clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01
+  clickup-axi tasks edit HGAI-2316 --append-body "QA: repro steps ..." --add-tag qa
   clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"`
 
 func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {

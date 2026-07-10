@@ -21,12 +21,17 @@ func (c *Client) CreateComment(taskID, text string) *APIError {
 	return c.do(http.MethodPost, "/task/"+taskID+"/comment", body, nil)
 }
 
-// TaskEdit is a mutation of a task's fields. A zero Status leaves the
-// status unchanged; empty AddAssignees/RemAssignees leave assignees
-// untouched. It maps to a single PUT /task/{id} so status and assignee
-// changes commit atomically in one request.
+// TaskEdit is a mutation of a task's fields. Zero values leave a field
+// unchanged: "" for Status/Name, nil for Priority/DueDate and the
+// assignee lists. Priority 0 and DueDate 0 clear their field (JSON
+// null). It maps to a single PUT /task/{id} so all field changes
+// commit atomically in one request.
 type TaskEdit struct {
 	Status       string
+	Name         string
+	Priority     *int    // nil = unchanged, 0 = clear, 1 (urgent) .. 4 (low)
+	DueDate      *int64  // nil = unchanged, 0 = clear, else millisecond epoch
+	Body         *string // nil = unchanged, else full markdown replacement
 	AddAssignees []int64
 	RemAssignees []int64
 }
@@ -35,6 +40,28 @@ func (c *Client) UpdateTask(taskID string, edit TaskEdit) *APIError {
 	body := map[string]any{}
 	if edit.Status != "" {
 		body["status"] = edit.Status
+	}
+	if edit.Name != "" {
+		body["name"] = edit.Name
+	}
+	if edit.Priority != nil {
+		if *edit.Priority == 0 {
+			body["priority"] = nil
+		} else {
+			body["priority"] = *edit.Priority
+		}
+	}
+	if edit.DueDate != nil {
+		if *edit.DueDate == 0 {
+			body["due_date"] = nil
+		} else {
+			body["due_date"] = *edit.DueDate
+			// Date-only: the CLI takes and renders dates, not times.
+			body["due_date_time"] = false
+		}
+	}
+	if edit.Body != nil {
+		body["markdown_content"] = *edit.Body
 	}
 	if len(edit.AddAssignees) > 0 || len(edit.RemAssignees) > 0 {
 		add := edit.AddAssignees
@@ -48,6 +75,17 @@ func (c *Client) UpdateTask(taskID string, edit TaskEdit) *APIError {
 		body["assignees"] = map[string][]int64{"add": add, "rem": rem}
 	}
 	return c.do(http.MethodPut, "/task/"+taskID, body, nil)
+}
+
+// AddTag and RemoveTag attach and detach one tag; the API has no batch
+// form, so callers loop. Adding an unknown name would create the tag,
+// which is why the CLI validates tags pre-flight (ResolveSpaceTags).
+func (c *Client) AddTag(taskID, tag string) *APIError {
+	return c.do(http.MethodPost, "/task/"+taskID+"/tag/"+url.PathEscape(tag), nil, nil)
+}
+
+func (c *Client) RemoveTag(taskID, tag string) *APIError {
+	return c.do(http.MethodDelete, "/task/"+taskID+"/tag/"+url.PathEscape(tag), nil, nil)
 }
 
 func (c *Client) GetList(id string) (*List, *APIError) {

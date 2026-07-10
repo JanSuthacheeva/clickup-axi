@@ -21,6 +21,8 @@ type fakeClickUp struct {
 	putRaw     []string
 	postBodies []map[string]string
 	commentGET int
+	tagAdds    []string
+	tagRems    []string
 }
 
 func newFakeClickUp(t *testing.T) (*fakeClickUp, *clickup.Client) {
@@ -94,6 +96,46 @@ func (f *fakeClickUp) list(t *testing.T, id, name string, statuses ...string) {
 	})
 }
 
+// spaceTags registers GET /space/{id}/tag so --add-tag validation can
+// check the space's existing tags.
+func (f *fakeClickUp) spaceTags(t *testing.T, spaceID string, names ...string) {
+	t.Helper()
+	items := make([]string, len(names))
+	for i, n := range names {
+		items[i] = fmt.Sprintf(`{"name": %q}`, n)
+	}
+	body := fmt.Sprintf(`{"tags": [%s]}`, strings.Join(items, ", "))
+	f.mux.HandleFunc("GET /api/v2/space/"+spaceID+"/tag", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(body))
+	})
+}
+
+// tagOps registers the per-tag add/remove endpoints and records calls.
+func (f *fakeClickUp) tagOps(t *testing.T, taskID string) {
+	t.Helper()
+	f.mux.HandleFunc("POST /api/v2/task/"+taskID+"/tag/{tag}", func(w http.ResponseWriter, r *http.Request) {
+		f.tagAdds = append(f.tagAdds, r.PathValue("tag"))
+		w.Write([]byte(`{}`))
+	})
+	f.mux.HandleFunc("DELETE /api/v2/task/"+taskID+"/tag/{tag}", func(w http.ResponseWriter, r *http.Request) {
+		f.tagRems = append(f.tagRems, r.PathValue("tag"))
+		w.Write([]byte(`{}`))
+	})
+}
+
+// failTagAdd makes adding one specific tag fail, for rollback tests.
+// The Go 1.22 mux picks this literal pattern over tagOps' {tag}.
+func (f *fakeClickUp) failTagAdd(t *testing.T, taskID, tag string) {
+	t.Helper()
+	f.mux.HandleFunc("POST /api/v2/task/"+taskID+"/tag/"+tag, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"err": "boom", "ECODE": "TAG_001"}`))
+	})
+}
+
+// Fixture timestamps sit at 12:00 UTC so their local-date rendering is
+// the same in every timezone from UTC-11 to UTC+12, keeping these tests
+// deterministic on any dev machine or CI zone.
 const taskJSON = `{
 	"id": "abc123",
 	"custom_id": "AIKK-99",
@@ -101,16 +143,16 @@ const taskJSON = `{
 	"text_content": "After OAuth callback the user lands on a 404.",
 	"status": {"status": "in progress"},
 	"priority": {"priority": "high"},
-	"due_date": "1783296000000",
+	"due_date": "1783339200000",
 	"url": "https://app.clickup.com/t/abc123",
 	"assignees": [{"id": 1, "username": "jan"}],
 	"list": {"id": "901234", "name": "Sprint 14"}
 }`
 
 const commentsJSON = `{"comments": [
-	{"id": "3", "comment_text": "Repro'd on staging, with Safari", "user": {"id": 2, "username": "mia"}, "date": 1782950400000},
-	{"id": "2", "comment_text": "Suspect the state param", "user": {"id": 1, "username": "jan"}, "date": "1782864000000"},
-	{"id": "1", "comment_text": "Customer report", "user": {"id": 3, "username": "tom"}, "date": 1782777600000}
+	{"id": "3", "comment_text": "Repro'd on staging, with Safari", "user": {"id": 2, "username": "mia"}, "date": 1782993600000},
+	{"id": "2", "comment_text": "Suspect the state param", "user": {"id": 1, "username": "jan"}, "date": "1782907200000"},
+	{"id": "1", "comment_text": "Customer report", "user": {"id": 3, "username": "tom"}, "date": 1782820800000}
 ]}`
 
 func runCLI(t *testing.T, c *clickup.Client, args ...string) (string, int) {
@@ -337,16 +379,22 @@ func TestTaskEditAggregatesMultipleBadTokensInOneField(t *testing.T) {
 }
 
 // editTaskJSON gives the task a current assignee (jan, id 42) that lines
-// up with membersTeamJSON (jan 42, Ting Nguyen 189, Tinh Tran 190), so
-// add / remove / idempotency all resolve against consistent ids.
+// up with membersTeamJSON (jan 42, Ting Nguyen 189, Tinh Tran 190), plus
+// a priority, due date, markdown body, space, and tags, so every edit
+// field can prove set / clear / no-op behavior against known state.
 const editTaskJSON = `{
 	"id": "abc123",
 	"custom_id": "AIKK-99",
 	"name": "Fix login redirect",
 	"status": {"status": "in progress"},
+	"priority": {"priority": "high"},
+	"due_date": "1783339200000",
+	"markdown_description": "After OAuth the user lands on a 404.",
 	"url": "https://app.clickup.com/t/abc123",
 	"assignees": [{"id": 42, "username": "jan"}],
-	"list": {"id": "901234", "name": "Sprint 14"}
+	"list": {"id": "901234", "name": "Sprint 14"},
+	"space": {"id": "sp1"},
+	"tags": [{"name": "backend"}]
 }`
 
 func TestTaskEditAddsAssigneeByName(t *testing.T) {
@@ -583,12 +631,555 @@ func TestTaskEditUnknownFlagListsValid(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", editTaskJSON)
 
-	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "high")
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--color", "red")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if want := "valid: --status, --assignee, --unassign"; !strings.Contains(out, want) {
+	if want := "valid: --status, --assignee, --unassign, --priority, --name, --due, --body, --append-body, --add-tag, --remove-tag"; !strings.Contains(out, want) {
 		t.Errorf("output missing valid-flag list\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditSetsPriority(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "urgent")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 priority: high -> urgent"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"priority":1`) {
+		t.Errorf("PUT raw = %v, want priority 1", f.putRaw)
+	}
+}
+
+func TestTaskEditClearsPriority(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "none")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 priority: high -> none"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"priority":null`) {
+		t.Errorf("PUT raw = %v, want priority null", f.putRaw)
+	}
+}
+
+func TestTaskEditSamePriorityIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // priority high
+	// No PUT handler: a PUT would 404 and surface in output.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "High")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := "no changes (priority already high)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called for a no-op priority: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditInvalidPriorityListsValid(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "valid: urgent, high, normal, low, none"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called despite invalid priority: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditSetsDueDate(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "2026-07-20")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 due: 2026-07-06 -> 2026-07-20"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"due_date":1784548800000`) {
+		t.Errorf("PUT raw = %v, want due_date 1784548800000", f.putRaw)
+	}
+	if !strings.Contains(f.putRaw[0], `"due_date_time":false`) {
+		t.Errorf("PUT raw = %v, want due_date_time false", f.putRaw)
+	}
+}
+
+func TestTaskEditClearsDueDate(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "none")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 due: 2026-07-06 -> none"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"due_date":null`) {
+		t.Errorf("PUT raw = %v, want due_date null", f.putRaw)
+	}
+}
+
+func TestTaskEditSameDueIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // due 2026-07-06
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "2026-07-06")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := "no changes (due already 2026-07-06)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called for a no-op due date: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditBadDueDateIsFieldError(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "tomorrow")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "valid: YYYY-MM-DD"; !strings.Contains(out, want) {
+		t.Errorf("output missing date-format hint\noutput:\n%s", out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called despite invalid due date: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditRenames(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--name", "Fix OAuth redirect")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := `task: abc123 renamed: "Fix login redirect" -> "Fix OAuth redirect"`; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"name":"Fix OAuth redirect"`) {
+		t.Errorf("PUT raw = %v, want the new name", f.putRaw)
+	}
+}
+
+func TestTaskEditSameNameIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--name", "Fix login redirect")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := `no changes (name already "Fix login redirect")`; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called for a no-op rename: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditEmptyNameIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--name", "   ")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--name must not be empty") {
+		t.Errorf("output missing empty-name error\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditMultipleFieldsOneAtomicPut(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123",
+		"--status", "in review", "--priority", "low", "--due", "2026-07-20", "--name", "Fix OAuth redirect")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if len(f.putBodies) != 1 {
+		t.Fatalf("want 1 atomic PUT, got %d: %v", len(f.putBodies), f.putRaw)
+	}
+	for _, want := range []string{`"status":"in review"`, `"priority":4`, `"due_date":1784548800000`, `"name":"Fix OAuth redirect"`} {
+		if !strings.Contains(f.putRaw[0], want) {
+			t.Errorf("PUT raw missing %s\nraw: %s", want, f.putRaw[0])
+		}
+	}
+	for _, want := range []string{"status changed", "priority: high -> low", "due: 2026-07-06 -> 2026-07-20", "renamed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+func TestTaskEditReplacesBody(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--body", "New **desc**")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 description replaced (12 chars)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"markdown_content":"New **desc**"`) {
+		t.Errorf("PUT raw = %v, want markdown_content replacement", f.putRaw)
+	}
+}
+
+func TestTaskEditAppendsBody(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // markdown: "After OAuth the user lands on a 404."
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--append-body", "Repro: safari only.")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 description appended (+19 chars)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0],
+		`"markdown_content":"After OAuth the user lands on a 404.\n\nRepro: safari only."`) {
+		t.Errorf("PUT raw = %v, want existing body + blank line + appended text", f.putRaw)
+	}
+}
+
+func TestTaskEditAppendToEmptyBodySkipsSeparator(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", strings.Replace(editTaskJSON,
+		`"markdown_description": "After OAuth the user lands on a 404.",`, "", 1))
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	_, code := runCLI(t, c, "tasks", "edit", "abc123", "--append-body", "First note.")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if len(f.putRaw) != 1 || !strings.Contains(f.putRaw[0], `"markdown_content":"First note."`) {
+		t.Errorf("PUT raw = %v, want the appended text without a leading separator", f.putRaw)
+	}
+}
+
+func TestTaskEditBodyAndAppendConflict(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--body", "a", "--append-body", "b")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--body and --append-body cannot be combined") {
+		t.Errorf("output missing conflict message\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditEmptyBodyIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--body", "  ")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--body must not be empty") {
+		t.Errorf("output missing empty-body error\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditAggregatesPriorityAndDueErrors(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker", "--due", "tomorrow")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "2 fields cannot be applied") {
+		t.Errorf("output missing aggregated-failure header\noutput:\n%s", out)
+	}
+	for _, want := range []string{"urgent, high, normal, low, none", "YYYY-MM-DD"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("aggregated output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("no PUT should happen when a field is invalid: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditAddsTag(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // space sp1, tags: backend
+	f.spaceTags(t, "sp1", "backend", "urgent-fix", "qa")
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "urgent-fix")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 tags +urgent-fix"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "urgent-fix" {
+		t.Errorf("tag adds = %v, want [urgent-fix]", f.tagAdds)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("a tags-only edit must not PUT the task: %v", f.putRaw)
+	}
+}
+
+func TestTaskEditUnknownTagRefusedWithExisting(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "urgnt")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{`tag "urgnt" does not exist in the space`, "existing: backend, qa"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.tagAdds) != 0 || len(f.putBodies) != 0 {
+		t.Errorf("nothing may be written when a tag is unknown (adds=%v puts=%v)", f.tagAdds, f.putRaw)
+	}
+}
+
+func TestTaskEditRemovesTag(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // tag backend on the task
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--remove-tag", "backend")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 tags -backend"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "backend" {
+		t.Errorf("tag removes = %v, want [backend]", f.tagRems)
+	}
+}
+
+func TestTaskEditAddTagUsesSpaceCasing(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // space sp1, tags: backend
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.tagOps(t, "abc123")
+
+	// The space tag is "qa"; a case-different input must write "qa",
+	// not mint a duplicate "QA".
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "QA")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "qa" {
+		t.Errorf("tag adds = %v, want [qa] (space casing)", f.tagAdds)
+	}
+	if want := "task: abc123 tags +qa"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditRemoveTagUsesTaskCasing(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // tag "backend" on the task
+	f.tagOps(t, "abc123")
+
+	// The tag on the task is "backend"; a case-different input must
+	// DELETE "backend" so the removal actually targets the stored tag.
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--remove-tag", "BACKEND")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "backend" {
+		t.Errorf("tag removes = %v, want [backend] (task casing)", f.tagRems)
+	}
+	if want := "task: abc123 tags -backend"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditAddExistingTagIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // backend already on the task
+	f.spaceTags(t, "sp1", "backend", "qa")
+	// No tagOps handler: a tag call would 404 and surface in output.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "Backend")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := "no changes (tags already as requested)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditRemoveAbsentTagIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON) // qa not on the task
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--remove-tag", "qa")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (idempotent)\noutput:\n%s", code, out)
+	}
+	if want := "no changes (tags already as requested)"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditSameTagAddAndRemoveIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "qa", "--remove-tag", "QA")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "both --add-tag and --remove-tag") {
+		t.Errorf("output missing conflict message\noutput:\n%s", out)
+	}
+}
+
+func TestTaskEditTagsComposeWithFields(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.put(t, "abc123", http.StatusOK, `{}`)
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review", "--add-tag", "qa")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{"status changed: in progress -> in review", "tags +qa"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 1 || len(f.tagAdds) != 1 {
+		t.Errorf("want 1 PUT and 1 tag add, got %d PUTs, adds %v", len(f.putBodies), f.tagAdds)
+	}
+}
+
+func TestTaskEditInvalidStatusBlocksTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.tagOps(t, "abc123")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "bogus", "--add-tag", "qa")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if len(f.tagAdds) != 0 || len(f.putBodies) != 0 {
+		t.Errorf("a bad field must block the whole edit, tags included (adds=%v puts=%v)", f.tagAdds, f.putRaw)
+	}
+}
+
+func TestTaskEditPutFailureRollsBackTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.spaceTags(t, "sp1", "backend", "qa")
+	f.tagOps(t, "abc123")
+	f.put(t, "abc123", http.StatusInternalServerError, `{"err": "boom", "ECODE": "PUT_001"}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--status", "in review", "--add-tag", "qa")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	// Tags go out before the PUT, so the add happened and was reverted.
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "qa" {
+		t.Errorf("tag adds = %v, want [qa] (applied before the PUT)", f.tagAdds)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "qa" {
+		t.Errorf("tag removes = %v, want [qa] (rolled back after the failed PUT)", f.tagRems)
+	}
+	if want := "tag changes rolled back, nothing applied"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+}
+
+func TestTaskEditTagFailureRollsBackAppliedTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.spaceTags(t, "sp1", "backend", "qa", "api")
+	f.tagOps(t, "abc123")
+	f.failTagAdd(t, "abc123", "api")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--add-tag", "qa,api")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	// qa was applied, then rolled back when api failed.
+	if len(f.tagAdds) != 1 || f.tagAdds[0] != "qa" {
+		t.Errorf("tag adds = %v, want [qa]", f.tagAdds)
+	}
+	if len(f.tagRems) != 1 || f.tagRems[0] != "qa" {
+		t.Errorf("tag removes = %v, want [qa] (rollback of the applied add)", f.tagRems)
+	}
+	for _, want := range []string{`tag "api" could not be applied`, "tag changes rolled back, nothing applied"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("no PUT may happen when a tag call fails first: %v", f.putRaw)
+	}
+}
+
+func TestTaskViewShowsTags(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "tags: backend"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
 	}
 }
 

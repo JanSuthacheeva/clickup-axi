@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `tasks edit <id>` now covers the full field set alongside `--status`
+  and `--assignee`/`--unassign`: `--priority urgent|high|normal|low|none`
+  (`none` clears), `--due YYYY-MM-DD` or `--due none`, `--name "<title>"`,
+  `--body "<markdown>"` (replace the description) or `--append-body
+  "<markdown>"` (add below the existing one), and
+  `--add-tag`/`--remove-tag` (both repeatable and comma-separated) for
+  tags that already exist in the space - an unknown tag fails with the
+  space's tags inlined. Every field is validated together in one
+  pre-flight pass, so all invalid fields are reported at once; the writes
+  then apply tags first and the atomic `PUT` last, rolling the tag ops
+  back on a later failure so the edit stays all-or-nothing. Re-applying
+  the current state (same value, existing tag) is a stated no-op.
+- `tasks <id>` now shows the task's tags.
+
 ## [0.4.0] - 2026-07-09
 
 ### Added
@@ -112,7 +128,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release, plus a passive once-per-24h update notice and healing of
   installed skill copies (`CLICKUP_AXI_NO_UPDATE_CHECK=1` disables).
 
-[Unreleased]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.1.0...v0.1.1

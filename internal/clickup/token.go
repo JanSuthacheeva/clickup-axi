@@ -23,6 +23,12 @@ func resolveToken() string {
 	return strings.TrimSpace(string(b))
 }
 
+// TokenFilePath is the platform-native token location
+// (os.UserConfigDir): ~/.config on Linux, ~/Library/Application
+// Support on macOS. Deliberately NOT overridden by XDG_CONFIG_HOME
+// outside Linux - macOS shells commonly export it, and honoring it
+// would strand tokens stored by earlier versions. Tests isolate by
+// relocating HOME instead.
 func TokenFilePath() (string, error) {
 	dir, err := os.UserConfigDir()
 	if err != nil {

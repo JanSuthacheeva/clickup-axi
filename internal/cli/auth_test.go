@@ -6,16 +6,27 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 )
 
-// isolateConfig points the user config directory at a temp dir and clears
-// CLICKUP_TOKEN so auth tests never touch the real environment.
+// isolateConfig relocates the user config directory into a temp dir and
+// clears CLICKUP_TOKEN so auth tests never touch the real environment.
+// os.UserConfigDir derives from XDG_CONFIG_HOME on Linux but from HOME
+// elsewhere (~/Library/Application Support on macOS), so both must
+// move - and the expected path must come from TokenFilePath, not be
+// rebuilt by hand.
 func isolateConfig(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
 	t.Setenv("CLICKUP_TOKEN", "")
-	return filepath.Join(dir, "clickup-axi", "token")
+	path, err := clickup.TokenFilePath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path
 }
 
 func TestAuthLoginStoresValidatedToken(t *testing.T) {

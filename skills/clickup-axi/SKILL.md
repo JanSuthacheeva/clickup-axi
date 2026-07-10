@@ -3,11 +3,12 @@ name: clickup-axi
 description: >
   Manage ClickUp tasks via the clickup-axi CLI - list tasks assigned to
   the user, view a task with its comments and description by id, change
-  a task's status or assignees, and add a comment to a task. Use when
-  the user mentions ClickUp, sprint tasks, tickets with ids like
-  HGAI-2316 or ECOM-2254, asks what is on their plate, or wants a task
-  looked up, summarized, commented on, reassigned, or moved to another
-  status.
+  a task's status, assignees, priority, due date, name, description, or
+  tags, and add a comment to a task. Use when the user mentions ClickUp,
+  sprint tasks, tickets with ids like HGAI-2316 or ECOM-2254, asks what
+  is on their plate, or wants a task looked up, summarized, commented
+  on, reassigned, retitled, reprioritized, rescheduled, tagged, or
+  moved to another status.
 user-invocable: false
 author: Jan Suthacheeva
 metadata:
@@ -64,28 +65,38 @@ pick a workspace on your own.
 ## Commands
 
 ```sh
-clickup-axi                                                   # who am I + workspaces (auth check)
-clickup-axi tasks                                             # open tasks assigned to the user
-clickup-axi tasks --assignee "<who>" --space "<space>"        # a teammate's open tasks; names resolve case-insensitively
-clickup-axi tasks <id>                                        # one task: metadata, description, newest comments
-clickup-axi tasks <id> --full                                 # complete description and all fetched comments
-clickup-axi search "<query>"                                  # find YOUR tasks by words in the title or description
-clickup-axi search "<query>" --assignee all --space "<space>" # widen beyond your tasks; space and assignee resolve by name
+clickup-axi                                                              # who am I + workspaces (auth check)
+clickup-axi tasks                                                        # open tasks assigned to the user
+clickup-axi tasks --assignee "<who>" --space "<space>"                   # a teammate's open tasks; names resolve case-insensitively
+clickup-axi tasks <id>                                                   # one task: metadata, description, newest comments
+clickup-axi tasks <id> --full                                            # complete description and all fetched comments
+clickup-axi search "<query>"                                             # find YOUR tasks by words in the title or description
+clickup-axi search "<query>" --assignee all --space "<space>"            # widen beyond your tasks; space and assignee resolve by name
 clickup-axi tasks edit <id> --status "<status>"
-clickup-axi tasks edit <id> --assignee <who> --unassign <who> # reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id
+clickup-axi tasks edit <id> --assignee <who> --unassign <who>            # reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id
+clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>" # priority: urgent|high|normal|low|none; due: YYYY-MM-DD or none; fields combine in one call
+clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>   # --body replaces the description, --append-body adds below it; tags must already exist in the space
 clickup-axi tasks comment <id> --text "<text>"
-clickup-axi update                                            # self-update to the latest release (only after user consent)
+clickup-axi update                                                       # self-update to the latest release (only after user consent)
 ```
 
 Task ids may be custom (HGAI-2316, case-insensitive) or internal
 (86ey3tx8m). An invalid status fails with the list's valid statuses
 echoed inline - pick one and retry once.
 
-`tasks edit` also sets assignees: `--assignee <who>` adds and
-`--unassign <who>` removes, both repeatable and comma-separated
-(`--assignee ting,me`); `<who>` is `me`, a member name, or an id, and
-they combine with `--status` in one call. Re-adding an existing
-assignee or removing an absent one is a stated no-op.
+`tasks edit` changes any field and they combine freely in one call:
+`--assignee <who>` adds and `--unassign <who>` removes people (both
+repeatable and comma-separated; `<who>` is `me`, a member name, or an
+id), `--priority urgent|high|normal|low|none` (none clears),
+`--due YYYY-MM-DD` or `--due none`, `--name "<title>"`, and
+`--body "<markdown>"` replaces the description while
+`--append-body "<markdown>"` adds below it (prefer append when the
+existing description should survive). `--add-tag`/`--remove-tag` take
+existing space tags only; an unknown tag fails with the space's tags
+inlined. Every invalid field is reported together with the others
+before anything is written - fix them all and retry once. Re-applying
+the current state (same status, same assignees, existing tag) is a
+stated no-op.
 
 `tasks` and `search` cover your own tasks by default; `--assignee`
 targets a teammate instead. Before widening with `--assignee all`, ask

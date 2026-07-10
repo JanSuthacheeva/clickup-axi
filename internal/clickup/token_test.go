@@ -7,12 +7,20 @@ import (
 )
 
 func TestResolveTokenPrefersEnvOverFile(t *testing.T) {
-	// Point the user config directory at a temp dir and clear
+	// Relocate the user config directory into a temp dir and clear
 	// CLICKUP_TOKEN so the test never touches the real environment.
+	// os.UserConfigDir derives from XDG_CONFIG_HOME on Linux but from
+	// HOME elsewhere (~/Library/Application Support on macOS), so both
+	// must move - and the expected path must come from TokenFilePath,
+	// not be rebuilt by hand.
 	dir := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", dir)
+	t.Setenv("HOME", dir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(dir, ".config"))
 	t.Setenv("CLICKUP_TOKEN", "")
-	tokenPath := filepath.Join(dir, "clickup-axi", "token")
+	tokenPath, err := TokenFilePath()
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err != nil {
 		t.Fatal(err)

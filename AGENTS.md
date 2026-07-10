@@ -105,7 +105,13 @@ instead).
   (case-insensitive) then a unique substring. Every miss/ambiguity is
   an error inlining candidate `id,name` pairs (capped at
   `resolveListCap`) for a one-step retry - the same recovery pattern as
-  `SelectTeam`.
+  `SelectTeam`. `tasks edit` tags resolve through `ResolveSpaceTags`
+  (`clickup/space.go`): a case-insensitive exact match against the
+  space's tags, canonicalized to the stored casing so a write never
+  mints a case-different duplicate. Unlike the fail-fast resolvers it
+  aggregates every unknown tag into one pre-flight report (space tags
+  inlined via `tagList`), so a multi-field edit surfaces all bad values
+  at once.
 - `search` has no ClickUp text-search endpoint behind it: it filters
   tasks server-side via `GetTeamTasksPage` (paged, bounded by
   `searchMaxPages`) and ranks matches locally in `rankTasks` (title >

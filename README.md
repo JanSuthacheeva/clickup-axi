@@ -11,8 +11,9 @@ A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md)
 design principles: token-efficient output, structured errors, and
 next-step hints on every command. It covers the flows agents need most:
 listing open tasks (yours or a teammate's), finding a task by words in
-its title or description, viewing one task with its comments, changing
-its status and assignees, and commenting on it.
+its title or description, viewing one task with its comments, editing
+its status, assignees, priority, due date, name, description, or tags,
+and commenting on it.
 
 ## Installation
 
@@ -44,6 +45,9 @@ clickup-axi tasks HGAI-2316          # one task with newest comments
 clickup-axi search "oauth redirect"  # find your tasks by title/description text
 clickup-axi tasks edit HGAI-2316 --status "in review"
 clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me   # reassign (names resolve)
+clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01   # multi-field edit, one atomic call
+clickup-axi tasks edit HGAI-2316 --append-body "QA notes ..."       # add to the description
+clickup-axi tasks edit HGAI-2316 --add-tag qa --remove-tag wip      # existing space tags only
 clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
 ```
 

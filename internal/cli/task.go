@@ -5,6 +5,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
@@ -101,6 +102,13 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 	if d := t.DueDate.Date(); d != "" {
 		fmt.Fprintf(out, "  due: %s\n", d)
 	}
+	if len(t.Tags) > 0 {
+		names := make([]string, len(t.Tags))
+		for i, tg := range t.Tags {
+			names[i] = tg.Name
+		}
+		fmt.Fprintf(out, "  tags: %s\n", strings.Join(names, ", "))
+	}
 	fmt.Fprintf(out, "  url: %s\n", t.URL)
 
 	var help []string
@@ -143,7 +151,7 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 					text += "..."
 				}
 			}
-			fmt.Fprintf(out, "  %s,%s,%s\n", output.ToonCell(cm.User.Username), cm.Date.Date(), output.ToonCell(text))
+			fmt.Fprintf(out, "  %s,%s,%s\n", output.ToonCell(cm.User.Username), cm.Date.InstantDate(), output.ToonCell(text))
 		}
 		if len(shown) < len(comments) || len(comments) == clickup.CommentsPageSize {
 			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all fetched comments", displayID(t)))
@@ -156,10 +164,37 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 	output.WriteHelp(out, help...)
 }
 
+// editRequest carries the parsed flags of one tasks edit invocation.
+type editRequest struct {
+	id                   string
+	status               string
+	statusSet            bool
+	addTokens, remTokens []string
+	priority             string
+	prioritySet          bool
+	name                 string
+	nameSet              bool
+	due                  string
+	dueSet               bool
+	body                 string
+	bodySet              bool
+	appendBody           string
+	appendSet            bool
+	addTags, remTags     []string
+}
+
+// hasChange reports whether any mutation flag was given.
+func (r *editRequest) hasChange() bool {
+	return r.statusSet || r.prioritySet || r.nameSet || r.dueSet ||
+		r.bodySet || r.appendSet ||
+		len(r.addTokens) > 0 || len(r.remTokens) > 0 ||
+		len(r.addTags) > 0 || len(r.remTags) > 0
+}
+
+const editValidFlags = "--status, --assignee, --unassign, --priority, --name, --due, --body, --append-body, --add-tag, --remove-tag"
+
 func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
-	var id, status string
-	statusSet := false
-	var addTokens, remTokens []string
+	var r editRequest
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--status":
@@ -168,48 +203,132 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 				output.WriteError(out, "--status needs a value", "Run `clickup-axi tasks edit <id> --status \"in review\"`")
 				return 2
 			}
-			status = args[i]
-			statusSet = true
+			r.status = args[i]
+			r.statusSet = true
 		case "--assignee":
 			i++
 			if i >= len(args) {
 				output.WriteError(out, "--assignee needs a value", "Run `clickup-axi tasks edit <id> --assignee <who>`")
 				return 2
 			}
-			addTokens = append(addTokens, splitAssignees(args[i])...)
+			r.addTokens = append(r.addTokens, splitTokens(args[i])...)
 		case "--unassign":
 			i++
 			if i >= len(args) {
 				output.WriteError(out, "--unassign needs a value", "Run `clickup-axi tasks edit <id> --unassign <who>`")
 				return 2
 			}
-			remTokens = append(remTokens, splitAssignees(args[i])...)
+			r.remTokens = append(r.remTokens, splitTokens(args[i])...)
+		case "--priority":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--priority needs a value", "Run `clickup-axi tasks edit <id> --priority <urgent|high|normal|low|none>`")
+				return 2
+			}
+			r.priority = args[i]
+			r.prioritySet = true
+		case "--name":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--name needs a value", "Run `clickup-axi tasks edit <id> --name \"<title>\"`")
+				return 2
+			}
+			r.name = args[i]
+			r.nameSet = true
+		case "--due":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--due needs a value", "Run `clickup-axi tasks edit <id> --due <YYYY-MM-DD|none>`")
+				return 2
+			}
+			r.due = args[i]
+			r.dueSet = true
+		case "--body":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--body needs a value", "Run `clickup-axi tasks edit <id> --body \"<markdown>\"`")
+				return 2
+			}
+			r.body = args[i]
+			r.bodySet = true
+		case "--append-body":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--append-body needs a value", "Run `clickup-axi tasks edit <id> --append-body \"<markdown>\"`")
+				return 2
+			}
+			r.appendBody = args[i]
+			r.appendSet = true
+		case "--add-tag":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--add-tag needs a value", "Run `clickup-axi tasks edit <id> --add-tag <tag>`")
+				return 2
+			}
+			r.addTags = append(r.addTags, splitTokens(args[i])...)
+		case "--remove-tag":
+			i++
+			if i >= len(args) {
+				output.WriteError(out, "--remove-tag needs a value", "Run `clickup-axi tasks edit <id> --remove-tag <tag>`")
+				return 2
+			}
+			r.remTags = append(r.remTags, splitTokens(args[i])...)
 		case "--help", "-h":
 			fmt.Fprintln(out, tasksHelp)
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "-") {
-				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks edit\n  valid: --status, --assignee, --unassign", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks edit\n  valid: %s", args[i], editValidFlags))
 				return 2
 			}
-			if id != "" {
+			if r.id != "" {
 				output.WriteError(out, "tasks edit takes exactly one task id")
 				return 2
 			}
-			id = args[i]
+			r.id = args[i]
 		}
 	}
-	if id == "" {
+	if r.id == "" {
 		output.WriteError(out, "tasks edit needs a task id", "Run `clickup-axi tasks edit <id> --status \"<status>\"`")
 		return 2
 	}
-	if !statusSet && len(addTokens) == 0 && len(remTokens) == 0 {
-		output.WriteError(out, "tasks edit needs a change (--status, --assignee, or --unassign)",
-			fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` or `--assignee <who>`", id))
+	if r.nameSet && strings.TrimSpace(r.name) == "" {
+		output.WriteError(out, "--name must not be empty",
+			fmt.Sprintf("Run `clickup-axi tasks edit %s --name \"<title>\"`", r.id))
+		return 2
+	}
+	if r.bodySet && r.appendSet {
+		output.WriteError(out, "--body and --append-body cannot be combined",
+			"Use --body to replace the description or --append-body to add to it")
+		return 2
+	}
+	if r.bodySet && strings.TrimSpace(r.body) == "" {
+		output.WriteError(out, "--body must not be empty",
+			fmt.Sprintf("Run `clickup-axi tasks edit %s --body \"<markdown>\"`", r.id))
+		return 2
+	}
+	if r.appendSet && strings.TrimSpace(r.appendBody) == "" {
+		output.WriteError(out, "--append-body must not be empty",
+			fmt.Sprintf("Run `clickup-axi tasks edit %s --append-body \"<markdown>\"`", r.id))
+		return 2
+	}
+	// A tag named in both lists is a self-contradictory request.
+	for _, a := range r.addTags {
+		for _, rm := range r.remTags {
+			if strings.EqualFold(a, rm) {
+				output.WriteError(out, fmt.Sprintf("%q is in both --add-tag and --remove-tag", a),
+					"Name each tag in only one of --add-tag / --remove-tag")
+				return 2
+			}
+		}
+	}
+	if !r.hasChange() {
+		output.WriteError(out, "tasks edit needs a change\n  valid: "+editValidFlags,
+			fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` or any change flag", r.id))
 		return 2
 	}
 
-	t, err := c.GetTaskByID(id)
+	t, err := c.GetTaskByID(r.id)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
@@ -218,33 +337,67 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	// written, so a single bad field is reported alongside the others
 	// (not one at a time) and never leaves a half-applied task. Assignee
 	// names resolve against the workspace; the status is checked against
-	// the list. Only once all fields are known-good does the atomic PUT
-	// run. When the edit grows more fields, each adds its check here.
+	// the list; priority and due date parse locally. Only once all
+	// fields are known-good does the atomic PUT run. When the edit grows
+	// more fields, each adds its check here.
 	var fieldErrs []string
 
 	var addUsers, remUsers []clickup.User
-	if len(addTokens) > 0 || len(remTokens) > 0 {
+	if len(r.addTokens) > 0 || len(r.remTokens) > 0 {
 		team, terr := c.SelectTeam()
 		if terr != nil {
 			return renderAPIError(out, terr)
 		}
 		var tokErrs []string
-		if addUsers, tokErrs = resolveAssignees(addTokens, team, c); len(tokErrs) > 0 {
+		if addUsers, tokErrs = resolveAssignees(r.addTokens, team, c); len(tokErrs) > 0 {
 			fieldErrs = append(fieldErrs, tokErrs...)
 		}
-		if remUsers, tokErrs = resolveAssignees(remTokens, team, c); len(tokErrs) > 0 {
+		if remUsers, tokErrs = resolveAssignees(r.remTokens, team, c); len(tokErrs) > 0 {
 			fieldErrs = append(fieldErrs, tokErrs...)
 		}
 	}
 
-	statusChanges := statusSet && !strings.EqualFold(t.Status.Status, status)
+	statusChanges := r.statusSet && !strings.EqualFold(t.Status.Status, r.status)
 	if statusChanges {
 		// A wrong status is caught here rather than after a failed PUT, so
-		// it no longer hides behind (or gets hidden by) an assignee error.
-		if valid := listStatuses(c, t.List.ID); len(valid) > 0 && !containsFold(valid, status) {
+		// it no longer hides behind (or gets hidden by) another field error.
+		if valid := listStatuses(c, t.List.ID); len(valid) > 0 && !containsFold(valid, r.status) {
 			fieldErrs = append(fieldErrs, fmt.Sprintf("status %q not accepted in list %s\n  valid: %s",
-				status, t.List.Name, strings.Join(valid, ", ")))
+				r.status, t.List.Name, strings.Join(valid, ", ")))
 		}
+	}
+
+	var prio *int
+	if r.prioritySet {
+		if p, ok := parsePriority(r.priority); ok {
+			prio = &p
+		} else {
+			fieldErrs = append(fieldErrs, fmt.Sprintf("priority %q not accepted\n  valid: urgent, high, normal, low, none", r.priority))
+		}
+	}
+
+	var due *int64
+	if r.dueSet {
+		if d, ok := parseDue(r.due); ok {
+			due = &d
+		} else {
+			fieldErrs = append(fieldErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01) or none to clear", r.due))
+		}
+	}
+
+	// Tags to add must already exist in the space - a typo must not
+	// mint a new tag from an agent path. One GET covers all of them,
+	// and returns each tag's stored casing so the write uses the
+	// canonical name rather than the user's (validation is
+	// case-insensitive, but the API creates a tag on a non-exact name).
+	var addCanon map[string]string
+	if len(r.addTags) > 0 {
+		canon, bad, terr := c.ResolveSpaceTags(t.Space.ID, r.addTags)
+		if terr != nil {
+			return renderAPIError(out, terr)
+		}
+		addCanon = canon
+		fieldErrs = append(fieldErrs, bad...)
 	}
 
 	if len(fieldErrs) > 0 {
@@ -253,8 +406,8 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 
 	// A person named in both lists is a self-contradictory request.
 	for _, a := range addUsers {
-		for _, r := range remUsers {
-			if a.ID == r.ID {
+		for _, rm := range remUsers {
+			if a.ID == rm.ID {
 				output.WriteError(out, fmt.Sprintf("%q is in both --assignee and --unassign", assigneeName(a)),
 					"Name each person in only one of --assignee / --unassign")
 				return 2
@@ -290,40 +443,158 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		remNames = append(remNames, assigneeName(u))
 	}
 
+	// Same idempotency for tags: drop adds already on the task and
+	// removes not on it, deduping case-insensitively within each set.
+	// The write uses the stored casing (the space tag for an add, the
+	// task tag for a remove), never the user's input, so a case-different
+	// name cannot mint a duplicate tag or miss the DELETE target.
+	onTask := make(map[string]string, len(t.Tags))
+	for _, tg := range t.Tags {
+		onTask[strings.ToLower(tg.Name)] = tg.Name
+	}
+	var addTags, remTags []string
+	seenTag := make(map[string]bool)
+	for _, tg := range r.addTags {
+		k := strings.ToLower(tg)
+		if _, on := onTask[k]; on || seenTag[k] {
+			continue
+		}
+		seenTag[k] = true
+		addTags = append(addTags, addCanon[k])
+	}
+	seenTag = make(map[string]bool)
+	for _, tg := range r.remTags {
+		k := strings.ToLower(tg)
+		name, on := onTask[k]
+		if !on || seenTag[k] {
+			continue
+		}
+		seenTag[k] = true
+		remTags = append(remTags, name)
+	}
+
 	assigneeChanges := len(add) > 0 || len(rem) > 0
-	if !statusChanges && !assigneeChanges {
+	priorityChanges := prio != nil && !strings.EqualFold(currentPriority(t), priorityLabel(*prio))
+	dueChanges := due != nil && t.DueDate.Date() != dueLabel(*due)
+	nameChanges := r.nameSet && t.Name != r.name
+	// A body edit is always a change: comparing markdown to the stored
+	// source is unreliable, and re-sending the same content is harmless.
+	bodyChanges := r.bodySet || r.appendSet
+	tagChanges := len(addTags) > 0 || len(remTags) > 0
+
+	if !statusChanges && !assigneeChanges && !priorityChanges && !dueChanges && !nameChanges && !bodyChanges && !tagChanges {
 		var reasons []string
-		if statusSet {
+		if r.statusSet {
 			reasons = append(reasons, fmt.Sprintf("already has status %q", t.Status.Status))
 		}
-		if len(addTokens) > 0 || len(remTokens) > 0 {
+		if len(r.addTokens) > 0 || len(r.remTokens) > 0 {
 			reasons = append(reasons, "assignees already as requested")
+		}
+		if r.prioritySet {
+			reasons = append(reasons, "priority already "+currentPriority(t))
+		}
+		if r.dueSet {
+			if d := t.DueDate.Date(); d == "" {
+				reasons = append(reasons, "already has no due date")
+			} else {
+				reasons = append(reasons, "due already "+d)
+			}
+		}
+		if r.nameSet {
+			reasons = append(reasons, fmt.Sprintf("name already %q", t.Name))
+		}
+		if len(r.addTags) > 0 || len(r.remTags) > 0 {
+			reasons = append(reasons, "tags already as requested")
 		}
 		fmt.Fprintf(out, "task: %s no changes (%s)\n", displayID(t), strings.Join(reasons, ", "))
 		return 0
 	}
 
 	// The fetch above resolved any custom id; mutate via internal id.
-	// Status and assignee changes go out in one PUT so they commit
-	// atomically - no partial-mutation window. Every field was validated
-	// pre-flight, so a failure here is a workflow restriction (e.g. a
-	// forbidden status transition), which gets the raw translated error.
+	// All field changes go out in one PUT so they commit atomically -
+	// no partial-mutation window. Every field was validated pre-flight,
+	// so a failure here is a workflow restriction (e.g. a forbidden
+	// status transition), which gets the raw translated error.
 	edit := clickup.TaskEdit{}
 	if statusChanges {
-		edit.Status = status
+		edit.Status = r.status
 	}
 	if assigneeChanges {
 		edit.AddAssignees = add
 		edit.RemAssignees = rem
 	}
-	if err := c.UpdateTask(t.ID, edit); err != nil {
-		return renderAPIError(out, err)
+	if priorityChanges {
+		edit.Priority = prio
+	}
+	if dueChanges {
+		edit.DueDate = due
+	}
+	if nameChanges {
+		edit.Name = r.name
+	}
+	if bodyChanges {
+		content := r.body
+		if r.appendSet {
+			content = r.appendBody
+			if base := taskMarkdown(t); base != "" {
+				content = base + "\n\n" + r.appendBody
+			}
+		}
+		edit.Body = &content
+	}
+
+	// The write phase: tags first (one call per tag - the API has no
+	// batch form), then the atomic PUT. POST and DELETE invert exactly,
+	// so if a later tag call or the PUT fails, the applied tag ops roll
+	// back and the edit stays all-or-nothing; everything was validated
+	// pre-flight, so a failure here is exceptional (outage, rate limit)
+	// or a workflow-restricted status transition.
+	var appliedAdds, appliedRems []string
+	for _, tg := range addTags {
+		if terr := c.AddTag(t.ID, tg); terr != nil {
+			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
+				fmt.Sprintf("tag %q could not be applied: %s", tg, terr.Message))
+		}
+		appliedAdds = append(appliedAdds, tg)
+	}
+	for _, tg := range remTags {
+		if terr := c.RemoveTag(t.ID, tg); terr != nil {
+			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
+				fmt.Sprintf("tag %q could not be removed: %s", tg, terr.Message))
+		}
+		appliedRems = append(appliedRems, tg)
+	}
+	putNeeded := statusChanges || assigneeChanges || priorityChanges || dueChanges || nameChanges || bodyChanges
+	if putNeeded {
+		if err := c.UpdateTask(t.ID, edit); err != nil {
+			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
+				fmt.Sprintf("the field changes could not be applied: %s", err.Message))
+		}
 	}
 	if statusChanges {
-		fmt.Fprintf(out, "task: %s status changed: %s -> %s\n", displayID(t), t.Status.Status, status)
+		fmt.Fprintf(out, "task: %s status changed: %s -> %s\n", displayID(t), t.Status.Status, r.status)
 	}
 	if assigneeChanges {
 		fmt.Fprintf(out, "task: %s assignees%s%s\n", displayID(t), signedList("+", addNames), signedList("-", remNames))
+	}
+	if priorityChanges {
+		fmt.Fprintf(out, "task: %s priority: %s -> %s\n", displayID(t), currentPriority(t), priorityLabel(*prio))
+	}
+	if dueChanges {
+		fmt.Fprintf(out, "task: %s due: %s -> %s\n", displayID(t), orNone(t.DueDate.Date()), orNone(dueLabel(*due)))
+	}
+	if nameChanges {
+		fmt.Fprintf(out, "task: %s renamed: %q -> %q\n", displayID(t), t.Name, r.name)
+	}
+	if bodyChanges {
+		if r.appendSet {
+			fmt.Fprintf(out, "task: %s description appended (+%d chars)\n", displayID(t), len([]rune(r.appendBody)))
+		} else {
+			fmt.Fprintf(out, "task: %s description replaced (%d chars)\n", displayID(t), len([]rune(r.body)))
+		}
+	}
+	if tagChanges {
+		fmt.Fprintf(out, "task: %s tags%s%s\n", displayID(t), signedList("+", addTags), signedList("-", remTags))
 	}
 	output.WriteHelp(out, fmt.Sprintf("Run `clickup-axi tasks %s` to see the task", displayID(t)))
 	return 0
@@ -351,10 +622,44 @@ func renderFieldErrors(out io.Writer, id string, errs []string) int {
 	return 1
 }
 
-// splitAssignees turns a --assignee/--unassign value into tokens: a
-// comma is always a separator, so "ting, me" is two people. Empty
-// tokens (trailing commas, stray spaces) are dropped.
-func splitAssignees(v string) []string {
+// rollbackTags inverts already-applied tag ops (adds are deleted,
+// removes re-added) after a mid-write failure. It returns the ops that
+// could not be reverted, signed the way they were requested.
+func rollbackTags(c *clickup.Client, taskID string, adds, rems []string) []string {
+	var stuck []string
+	for _, tg := range adds {
+		if err := c.RemoveTag(taskID, tg); err != nil {
+			stuck = append(stuck, "+"+tg)
+		}
+	}
+	for _, tg := range rems {
+		if err := c.AddTag(taskID, tg); err != nil {
+			stuck = append(stuck, "-"+tg)
+		}
+	}
+	return stuck
+}
+
+// renderWriteFailure reports a write call that failed after pre-flight
+// passed. Applied tag ops are rolled back so the edit stays
+// all-or-nothing; whatever cannot be reverted is disclosed so the
+// stated task state stays truthful.
+func renderWriteFailure(out io.Writer, c *clickup.Client, t *clickup.Task, adds, rems []string, msg string) int {
+	id := displayID(t)
+	if stuck := rollbackTags(c, t.ID, adds, rems); len(stuck) > 0 {
+		fmt.Fprintf(out, "task: %s tags NOT rolled back: %s\n", id, strings.Join(stuck, " "))
+	} else if len(adds)+len(rems) > 0 {
+		fmt.Fprintf(out, "task: %s tag changes rolled back, nothing applied\n", id)
+	}
+	output.WriteError(out, msg,
+		fmt.Sprintf("Run `clickup-axi tasks %s` to see the task's current state, then retry", id))
+	return 1
+}
+
+// splitTokens turns a repeatable flag value into tokens: a comma is
+// always a separator, so "ting, me" is two people and "api, bug" two
+// tags. Empty tokens (trailing commas, stray spaces) are dropped.
+func splitTokens(v string) []string {
 	parts := strings.Split(v, ",")
 	tokens := make([]string, 0, len(parts))
 	for _, p := range parts {
@@ -413,6 +718,84 @@ func signedList(sign string, names []string) string {
 		fmt.Fprintf(&b, " %s%s", sign, n)
 	}
 	return b.String()
+}
+
+// parsePriority maps the human name to ClickUp's 1-4 scale; "none"
+// maps to 0, which clears the priority.
+func parsePriority(s string) (int, bool) {
+	switch strings.ToLower(s) {
+	case "urgent":
+		return 1, true
+	case "high":
+		return 2, true
+	case "normal":
+		return 3, true
+	case "low":
+		return 4, true
+	case "none":
+		return 0, true
+	}
+	return 0, false
+}
+
+// priorityLabel is the inverse of parsePriority, for no-op comparison
+// and the change summary.
+func priorityLabel(rank int) string {
+	switch rank {
+	case 1:
+		return "urgent"
+	case 2:
+		return "high"
+	case 3:
+		return "normal"
+	case 4:
+		return "low"
+	}
+	return "none"
+}
+
+// currentPriority names the task's priority for comparison and output;
+// an unset priority reads as "none".
+func currentPriority(t *clickup.Task) string {
+	if t.Priority == nil {
+		return "none"
+	}
+	return t.Priority.Priority
+}
+
+// parseDue turns --due input into a millisecond epoch: "none" clears
+// (0), otherwise the date is anchored at 12:00 UTC. ClickUp re-derives
+// the calendar date in the workspace's timezone and stores it at 04:00
+// local (verified against the real API), so noon keeps the date stable
+// for every offset from UTC-11 to UTC+12 - midnight would land on the
+// previous day west of Greenwich.
+func parseDue(s string) (int64, bool) {
+	if strings.EqualFold(s, "none") {
+		return 0, true
+	}
+	d, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return 0, false
+	}
+	return d.Add(12 * time.Hour).UnixMilli(), true
+}
+
+// dueLabel renders a due edit the way the task view renders due dates
+// ("" when cleared), keeping no-op comparison and output consistent.
+func dueLabel(ms int64) string {
+	if ms == 0 {
+		return ""
+	}
+	return time.UnixMilli(ms).Local().Format("2006-01-02")
+}
+
+// orNone renders an absent value ("") as the word agents pass to clear
+// it, keeping set and clear summaries symmetric.
+func orNone(s string) string {
+	if s == "" {
+		return "none"
+	}
+	return s
 }
 
 func cmdTaskComment(args []string, c *clickup.Client, out io.Writer) int {
@@ -498,6 +881,16 @@ func listStatuses(c *clickup.Client, listID string) []string {
 func taskDescription(t *clickup.Task) string {
 	if t.TextContent != "" {
 		return t.TextContent
+	}
+	return t.Description
+}
+
+// taskMarkdown is the markdown source of the description, for edits
+// that build on it; tasks fetched without one fall back to the raw
+// description.
+func taskMarkdown(t *clickup.Task) string {
+	if t.MarkdownDescription != "" {
+		return t.MarkdownDescription
 	}
 	return t.Description
 }

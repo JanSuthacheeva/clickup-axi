@@ -65,13 +65,15 @@ func (c *Client) getTaskByCustomID(id string) (*Task, *APIError) {
 }
 
 func (c *Client) getTask(ref taskRef) (*Task, *APIError) {
-	path := "/task/" + url.PathEscape(ref.id)
+	q := url.Values{}
+	// The markdown source of the description only comes along on
+	// request; edits that append to the body need it.
+	q.Set("include_markdown_description", "true")
 	if ref.custom {
-		q := url.Values{}
 		q.Set("custom_task_ids", "true")
 		q.Set("team_id", ref.teamID)
-		path += "?" + q.Encode()
 	}
+	path := "/task/" + url.PathEscape(ref.id) + "?" + q.Encode()
 	var t Task
 	if err := c.do(http.MethodGet, path, nil, &t); err != nil {
 		// ClickUp answers 401 (not 404) for custom ids outside the
