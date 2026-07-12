@@ -60,6 +60,9 @@ func TestTasksListsOpenAssignedTasks(t *testing.T) {
 	if strings.Contains(out, "more may exist") {
 		t.Errorf("partial-page note shown for a short page\noutput:\n%s", out)
 	}
+	if strings.Contains(out, "(page") {
+		t.Errorf("page qualifier shown on a single-page listing\noutput:\n%s", out)
+	}
 }
 
 func TestTasksEmptyStateIsExplicit(t *testing.T) {
@@ -78,28 +81,141 @@ func TestTasksEmptyStateIsExplicit(t *testing.T) {
 	}
 }
 
+// fullPage registers the team tasks endpoint with pageSize rows and an
+// optional last_page field, capturing each request's page param.
+func (f *fakeClickUp) fullPage(t *testing.T, teamID string, n int, lastPage string, gotPage *string) {
+	t.Helper()
+	f.mux.HandleFunc("GET /api/v2/team/"+teamID+"/task", func(w http.ResponseWriter, r *http.Request) {
+		if gotPage != nil {
+			*gotPage = r.URL.Query().Get("page")
+		}
+		var rows []string
+		for i := 0; i < n; i++ {
+			rows = append(rows, fmt.Sprintf(`{"id": "t%d", "name": "task %d", "status": {"status": "open"}, "due_date": null}`, i, i))
+		}
+		body := fmt.Sprintf(`{"tasks": [%s]}`, strings.Join(rows, ","))
+		if lastPage != "" {
+			body = fmt.Sprintf(`{"tasks": [%s], "last_page": %s}`, strings.Join(rows, ","), lastPage)
+		}
+		w.Write([]byte(body))
+	})
+}
+
 func TestTasksFullPageHintsAtMore(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
-	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
-		var rows []string
-		for i := 0; i < clickup.TeamTasksPageSize; i++ {
-			rows = append(rows, fmt.Sprintf(`{"id": "t%d", "name": "task %d", "status": {"status": "open"}, "due_date": null}`, i, i))
-		}
-		fmt.Fprintf(w, `{"tasks": [%s]}`, strings.Join(rows, ","))
-	})
+	f.fullPage(t, "9018", clickup.TeamTasksPageSize, "", nil)
 
 	out, code := runCLI(t, c, "tasks")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "(first page; more may exist)") {
-		t.Errorf("full page must state that more may exist\noutput:\n%s", out)
+	if !strings.Contains(out, "(page 1; more may exist)") {
+		t.Errorf("full page must state its page and that more may exist\noutput:\n%s", out)
 	}
-	// Stating truncation without a way past it strands the agent: the
-	// sanctioned way below one page is narrowing to a space.
+	// A truncated listing must be escapable (AXI section 3): paging is
+	// the guaranteed route, narrowing to a space the cheaper one.
+	if !strings.Contains(out, "Run `clickup-axi tasks --page 2` for the next page") {
+		t.Errorf("full page must hint at the next page\noutput:\n%s", out)
+	}
 	if !strings.Contains(out, "Run `clickup-axi tasks --space \"<name>\"` to narrow the listing to one project") {
 		t.Errorf("full page must hint at narrowing with --space\noutput:\n%s", out)
+	}
+}
+
+func TestTasksPageFlagRequestsThatPage(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	var gotPage string
+	f.fullPage(t, "9018", clickup.TeamTasksPageSize, "false", &gotPage)
+
+	out, code := runCLI(t, c, "tasks", "--page", "2")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	// The flag is 1-based for the agent; the API pages from 0.
+	if gotPage != "1" {
+		t.Errorf("API page param = %q, want %q (1-based flag maps to 0-based API)", gotPage, "1")
+	}
+	if !strings.Contains(out, "(page 2; more may exist)") {
+		t.Errorf("output missing the page qualifier\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "Run `clickup-axi tasks --page 3` for the next page") {
+		t.Errorf("output missing the next-page hint\noutput:\n%s", out)
+	}
+}
+
+func TestTasksLastPageBeyondFirstStatesIt(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.fullPage(t, "9018", 37, "true", nil)
+
+	out, code := runCLI(t, c, "tasks", "--page", "3")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "(page 3; last page)") {
+		t.Errorf("a later last page must state its position\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "--page 4") {
+		t.Errorf("last page must not hint at a next page\noutput:\n%s", out)
+	}
+}
+
+func TestTasksPageHintCarriesFilters(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.spaces(t, "9018", twoSpacesJSON)
+	f.fullPage(t, "9018", clickup.TeamTasksPageSize, "false", nil)
+
+	out, code := runCLI(t, c, "tasks", "--assignee", "ting", "--space", "Webshop")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "Run `clickup-axi tasks --assignee \"ting\" --space \"Webshop\" --page 2` for the next page"; !strings.Contains(out, want) {
+		t.Errorf("next-page hint must carry the filters forward\nwant %q\noutput:\n%s", want, out)
+	}
+	// --space was given, so the narrowing hint would be noise.
+	if strings.Contains(out, "to narrow the listing") {
+		t.Errorf("narrowing hint shown despite --space\noutput:\n%s", out)
+	}
+}
+
+func TestTasksEmptyPageBeyondEndIsDefinitive(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": [], "last_page": true}`))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--page", "9")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (an empty page is an answer)\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "tasks: 0 open tasks assigned to jan in Buzzwoo on page 9") {
+		t.Errorf("output missing the definitive empty page state\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "Run `clickup-axi tasks` for the first page") {
+		t.Errorf("output missing the way back to the first page\noutput:\n%s", out)
+	}
+}
+
+// A bad --page value is decidable locally: usage error, exit 2, no API
+// call (no handlers are registered, so any call would surface loudly).
+func TestTasksPageFlagValidation(t *testing.T) {
+	for _, bad := range [][]string{
+		{"tasks", "--page", "x"},
+		{"tasks", "--page", "0"},
+		{"tasks", "--page"},
+	} {
+		_, c := newFakeClickUp(t)
+		out, code := runCLI(t, c, bad...)
+		if code != 2 {
+			t.Errorf("%v: exit code = %d, want 2\noutput:\n%s", bad, code, out)
+		}
+		if !strings.Contains(out, "--page needs a positive number") {
+			t.Errorf("%v: output missing the validation error\noutput:\n%s", bad, out)
+		}
 	}
 }
 
@@ -395,7 +511,7 @@ func TestTasksUnknownFlagIsUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "valid: --assignee, --space (listing) or --comments N, --no-comments, --full (with a task id)") {
+	if !strings.Contains(out, "valid: --assignee, --space, --page (listing) or --comments N, --no-comments, --full (with a task id)") {
 		t.Errorf("usage error does not list valid flags inline\noutput:\n%s", out)
 	}
 }

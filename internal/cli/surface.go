@@ -21,7 +21,7 @@ var surface = []command{
 	{
 		usage:   "tasks",
 		summary: "List open tasks (yours by default)",
-		note:    "(--assignee <who> for a teammate, --space <name|id> to narrow)",
+		note:    "(--assignee <who> for a teammate, --space <name|id> to narrow, --page N for more)",
 		skill:   "clickup-axi tasks",
 		comment: "open tasks assigned to the user",
 	},

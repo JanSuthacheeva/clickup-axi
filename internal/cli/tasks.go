@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
@@ -26,6 +27,8 @@ list flags (without an id):
                      names resolve case-insensitively; all needs --space
   --space <name|id>  only tasks in this space (project); names
                      resolve case-insensitively
+  --page N           page of the listing (100 tasks per page; default 1);
+                     a full page hints at the next one
 
 view flags (with an id):
   --comments N   comments to include (default 3)
@@ -53,6 +56,7 @@ examples:
   clickup-axi tasks
   clickup-axi tasks --assignee ting
   clickup-axi tasks --assignee ting --space "Webshop"
+  clickup-axi tasks --page 2
   clickup-axi tasks HGAI-2316
   clickup-axi tasks 86ey3tx8m --full
   clickup-axi tasks edit HGAI-2316 --status "in review"
@@ -88,6 +92,7 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	assignee := "me"
 	var space string
+	page := 1
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
 		case "--assignee", "--space":
@@ -115,6 +120,22 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 			default:
 				assignee = args[i]
 			}
+		case "--page":
+			i++
+			// 1-based for the agent; a bad value is decidable locally,
+			// so it is a usage error caught before any API call.
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
+				output.WriteError(out, "--page needs a positive number",
+					"Run `clickup-axi tasks --page 2` for the second page")
+				return 2
+			}
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n < 1 {
+				output.WriteError(out, fmt.Sprintf("--page needs a positive number (got %q)", args[i]),
+					"Run `clickup-axi tasks --page 2` for the second page")
+				return 2
+			}
+			page = n
 		case "--comments", "--no-comments", "--full":
 			output.WriteError(out, fmt.Sprintf("%s needs a task id", args[i]),
 				fmt.Sprintf("Run `clickup-axi tasks <id> %s`", args[i]))
@@ -124,7 +145,7 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "-") {
-				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks\n  valid: --assignee, --space (listing) or --comments N, --no-comments, --full (with a task id)", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks\n  valid: --assignee, --space, --page (listing) or --comments N, --no-comments, --full (with a task id)", args[i]))
 				return 2
 			}
 			output.WriteError(out, fmt.Sprintf("unexpected argument %q: a task id does not combine with listing flags", args[i]),
@@ -174,18 +195,43 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		spaceSuffix = " in space " + spaceLabel
 	}
 
-	tasks, _, err := c.GetTeamTasksPage(team.ID, q)
+	// The flag is 1-based for the agent; the endpoint pages from 0.
+	q.Page = page - 1
+
+	tasks, lastPage, err := c.GetTeamTasksPage(team.ID, q)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
+
+	// base reconstructs the current invocation so paging hints carry
+	// the filters forward and the next call is copy-paste.
+	base := "clickup-axi tasks"
+	if assignee != "me" {
+		base += fmt.Sprintf(" --assignee %q", assignee)
+	}
+	if space != "" {
+		base += fmt.Sprintf(" --space %q", space)
+	}
+
 	if len(tasks) == 0 {
+		if page > 1 {
+			// Beyond the end: the zero is definitive, and the way back
+			// to real results is one hint away.
+			fmt.Fprintf(out, "tasks: 0 open tasks %s%s on page %d\n", scope, where, page)
+			output.WriteHelp(out, fmt.Sprintf("Run `%s` for the first page", base))
+			return 0
+		}
 		fmt.Fprintf(out, "tasks: 0 open tasks %s%s\n", scope, where)
 		return 0
 	}
 
+	// The page qualifier appears only when it carries information: a
+	// single-page listing (the common case) stays unqualified.
 	suffix := ""
-	if len(tasks) == clickup.TeamTasksPageSize {
-		suffix = " (first page; more may exist)"
+	if !lastPage {
+		suffix = fmt.Sprintf(" (page %d; more may exist)", page)
+	} else if page > 1 {
+		suffix = fmt.Sprintf(" (page %d; last page)", page)
 	}
 	// The summary key must differ from the array key below: duplicate
 	// keys at one level are invalid strict TOON (and `count:` matches
@@ -197,15 +243,17 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date())
 	}
 	help := []string{"Run `clickup-axi tasks <id>` for details and comments"}
-	if suffix != "" && space == "" {
-		// A truncated listing needs a way past the page; there is no
-		// paging flag, so narrowing is the sanctioned route (carrying
-		// the assignee filter forward).
-		cmd := "clickup-axi tasks --space \"<name>\""
-		if assignee != "me" {
-			cmd = fmt.Sprintf("clickup-axi tasks --assignee %q --space \"<name>\"", assignee)
+	if !lastPage {
+		// A truncated listing must be escapable (AXI section 3): paging
+		// is the guaranteed route, narrowing the cheaper one.
+		help = append(help, fmt.Sprintf("Run `%s --page %d` for the next page", base, page+1))
+		if space == "" {
+			cmd := "clickup-axi tasks --space \"<name>\""
+			if assignee != "me" {
+				cmd = fmt.Sprintf("clickup-axi tasks --assignee %q --space \"<name>\"", assignee)
+			}
+			help = append(help, fmt.Sprintf("Run `%s` to narrow the listing to one project", cmd))
 		}
-		help = append(help, fmt.Sprintf("Run `%s` to narrow the listing to one project", cmd))
 	}
 	output.WriteHelp(out, help...)
 	return 0
