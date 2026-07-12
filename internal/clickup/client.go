@@ -12,7 +12,10 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -23,9 +26,12 @@ const defaultBaseURL = "https://api.clickup.com/api/v2"
 const ErrNoAuth = "not authenticated: CLICKUP_TOKEN is not set and no token is stored"
 
 type Client struct {
-	base  string
-	token string
-	http  *http.Client
+	base          string
+	token         string
+	http          *http.Client
+	dateCachePath string
+	dateOnce      sync.Once
+	dateLocation  *time.Location
 }
 
 // New builds a client against an explicit base URL, primarily for
@@ -35,18 +41,22 @@ func New(base, token string, h *http.Client) *Client {
 }
 
 func NewFromEnv() *Client {
-	return &Client{
+	c := &Client{
 		base:  defaultBaseURL,
 		token: resolveToken(),
 		http:  &http.Client{Timeout: 30 * time.Second},
 	}
+	if dir, err := os.UserConfigDir(); err == nil {
+		c.dateCachePath = filepath.Join(dir, "clickup-axi", "timezone")
+	}
+	return c
 }
 
 // WithToken returns a client that authenticates with token but shares
 // this client's base URL and transport, so a token can be validated
 // before it is stored.
 func (c *Client) WithToken(token string) *Client {
-	return &Client{base: c.base, token: token, http: c.http}
+	return &Client{base: c.base, token: token, http: c.http, dateCachePath: c.dateCachePath}
 }
 
 // APIError is a translated ClickUp API failure; raw dependency messages

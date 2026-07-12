@@ -19,12 +19,12 @@ func (m *MsEpoch) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// Date renders a date-only epoch as a local calendar date. ClickUp
+// Date renders a date-only epoch as a workspace-local calendar date. ClickUp
 // anchors date-only due dates at 04:00 in the workspace's timezone, so
-// a UTC rendering shifts the date back by one everywhere east of
-// Greenwich; the machine's local zone is the best available proxy for
-// the workspace's. Use InstantDate for true instants (e.g. comment
-// timestamps), whose rendering must not vary with the host timezone.
+// rendering must use that location to preserve the date across hosts.
+// Until a client resolves it, the location defaults to time.Local. Use
+// InstantDate for true instants (e.g. comment timestamps), whose
+// rendering must not vary with the host timezone.
 func (m MsEpoch) Date() string {
 	return m.format(true)
 }
@@ -47,7 +47,7 @@ func (m MsEpoch) format(local bool) string {
 	}
 	t := time.UnixMilli(n)
 	if local {
-		t = t.Local()
+		t = t.In(WorkspaceDateLocation())
 	} else {
 		t = t.UTC()
 	}
@@ -58,6 +58,7 @@ type User struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
 	Email    string `json:"email"`
+	Timezone string `json:"timezone"`
 }
 
 type Task struct {

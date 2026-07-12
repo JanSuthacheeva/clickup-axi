@@ -33,6 +33,7 @@ func CustomIDsForced() bool {
 // does not know it (404, or 401 which ClickUp also returns for ids
 // outside the token's scope).
 func (c *Client) GetTaskByID(id string) (*Task, *APIError) {
+	c.DateLocation()
 	if CustomIDsForced() {
 		return c.getTaskByCustomID(id)
 	}

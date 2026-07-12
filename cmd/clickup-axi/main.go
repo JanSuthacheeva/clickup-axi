@@ -5,6 +5,7 @@ package main
 
 import (
 	"os"
+	_ "time/tzdata"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/cli"
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
