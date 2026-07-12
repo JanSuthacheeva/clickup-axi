@@ -336,18 +336,43 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		return 2
 	}
 
+	// Locally decidable values are usage errors, validated before any
+	// API call (AXI section 6: exit 2, same class as an unknown flag).
+	// They still aggregate with each other so one retry fixes both.
+	var usageErrs []string
+	var prio *int
+	if r.prioritySet {
+		if p, ok := parsePriority(r.priority); ok {
+			prio = &p
+		} else {
+			usageErrs = append(usageErrs, fmt.Sprintf("priority %q not accepted\n  valid: urgent, high, normal, low, none", r.priority))
+		}
+	}
+	var due *int64
+	if r.dueSet {
+		if d, ok := parseDue(r.due); ok {
+			due = &d
+		} else {
+			usageErrs = append(usageErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01) or none to clear", r.due))
+		}
+	}
+	if len(usageErrs) > 0 {
+		return renderFieldErrors(out, r.id, usageErrs, 2)
+	}
+
 	t, err := c.GetTaskByID(r.id)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 
-	// Pre-flight validation: every field is checked before anything is
-	// written, so a single bad field is reported alongside the others
-	// (not one at a time) and never leaves a half-applied task. Assignee
-	// names resolve against the workspace; the status is checked against
-	// the list; priority and due date parse locally. Only once all
-	// fields are known-good does the atomic PUT run. When the edit grows
-	// more fields, each adds its check here.
+	// Pre-flight validation of server-derived fields: every field is
+	// checked before anything is written, so a single bad field is
+	// reported alongside the others (not one at a time) and never leaves
+	// a half-applied task. Assignee names resolve against the workspace;
+	// the status is checked against the list; tags against the space.
+	// Only once all fields are known-good does the atomic PUT run. When
+	// the edit grows more fields, each adds its check here (or to the
+	// local usage stage above if it parses without the API).
 	var fieldErrs []string
 
 	var addUsers, remUsers []clickup.User
@@ -375,24 +400,6 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 
-	var prio *int
-	if r.prioritySet {
-		if p, ok := parsePriority(r.priority); ok {
-			prio = &p
-		} else {
-			fieldErrs = append(fieldErrs, fmt.Sprintf("priority %q not accepted\n  valid: urgent, high, normal, low, none", r.priority))
-		}
-	}
-
-	var due *int64
-	if r.dueSet {
-		if d, ok := parseDue(r.due); ok {
-			due = &d
-		} else {
-			fieldErrs = append(fieldErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01) or none to clear", r.due))
-		}
-	}
-
 	// Tags to add must already exist in the space - a typo must not
 	// mint a new tag from an agent path. One GET covers all of them,
 	// and returns each tag's stored casing so the write uses the
@@ -409,7 +416,7 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	}
 
 	if len(fieldErrs) > 0 {
-		return renderFieldErrors(out, displayID(t), fieldErrs)
+		return renderFieldErrors(out, displayID(t), fieldErrs, 1)
 	}
 
 	// A person named in both lists is a self-contradictory request.
@@ -611,11 +618,13 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 // renderFieldErrors reports every field that failed pre-flight validation
 // in one message, so the agent fixes them all before a single retry. The
 // edit is atomic, so nothing was changed while any field was invalid.
-func renderFieldErrors(out io.Writer, id string, errs []string) int {
+// code distinguishes locally-parseable usage errors (2) from
+// server-derived validation failures (1).
+func renderFieldErrors(out io.Writer, id string, errs []string, code int) int {
 	if len(errs) == 1 {
 		output.WriteError(out, errs[0],
 			fmt.Sprintf("Fix the value above, then rerun `clickup-axi tasks edit %s ...`", id))
-		return 1
+		return code
 	}
 	// Indent each error's continuation lines (e.g. a status "valid:" list)
 	// so they nest under their bullet instead of dedenting to the margin.
@@ -627,7 +636,7 @@ func renderFieldErrors(out io.Writer, id string, errs []string) int {
 		len(items), strings.Join(items, "\n  - "))
 	output.WriteError(out, msg,
 		fmt.Sprintf("Fix all the values above, then rerun `clickup-axi tasks edit %s ...` once", id))
-	return 1
+	return code
 }
 
 // rollbackTags inverts already-applied tag ops (adds are deleted,

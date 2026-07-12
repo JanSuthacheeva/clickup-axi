@@ -746,19 +746,18 @@ func TestTaskEditSamePriorityIsNoOp(t *testing.T) {
 	}
 }
 
+// A priority name is a static local enum: a bad one is a usage error
+// (exit 2, AXI section 6), caught before any API call.
 func TestTaskEditInvalidPriorityListsValid(t *testing.T) {
-	f, c := newFakeClickUp(t)
-	f.task(t, "abc123", editTaskJSON)
+	_, c := newFakeClickUp(t)
+	// No handlers registered: any API call would 404 and surface in output.
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker")
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
 	}
 	if want := "valid: urgent, high, normal, low, none"; !strings.Contains(out, want) {
 		t.Errorf("output missing %q\noutput:\n%s", want, out)
-	}
-	if len(f.putBodies) != 0 {
-		t.Errorf("PUT called despite invalid priority: %v", f.putRaw)
 	}
 }
 
@@ -815,19 +814,18 @@ func TestTaskEditSameDueIsNoOp(t *testing.T) {
 	}
 }
 
-func TestTaskEditBadDueDateIsFieldError(t *testing.T) {
-	f, c := newFakeClickUp(t)
-	f.task(t, "abc123", editTaskJSON)
+// A due date's format is decidable locally: a bad one is a usage error
+// (exit 2, AXI section 6), caught before any API call.
+func TestTaskEditBadDueDateIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	// No handlers registered: any API call would 404 and surface in output.
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "tomorrow")
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
 	}
 	if want := "valid: YYYY-MM-DD"; !strings.Contains(out, want) {
 		t.Errorf("output missing date-format hint\noutput:\n%s", out)
-	}
-	if len(f.putBodies) != 0 {
-		t.Errorf("PUT called despite invalid due date: %v", f.putRaw)
 	}
 }
 
@@ -976,13 +974,15 @@ func TestTaskEditEmptyBodyIsUsageError(t *testing.T) {
 	}
 }
 
+// Two locally-invalid values are still reported together, but as one
+// aggregated usage error (exit 2) rather than a runtime error.
 func TestTaskEditAggregatesPriorityAndDueErrors(t *testing.T) {
-	f, c := newFakeClickUp(t)
-	f.task(t, "abc123", editTaskJSON)
+	_, c := newFakeClickUp(t)
+	// No handlers registered: any API call would 404 and surface in output.
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker", "--due", "tomorrow")
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
 	}
 	if !strings.Contains(out, "2 fields cannot be applied") {
 		t.Errorf("output missing aggregated-failure header\noutput:\n%s", out)
@@ -992,8 +992,22 @@ func TestTaskEditAggregatesPriorityAndDueErrors(t *testing.T) {
 			t.Errorf("aggregated output missing %q\noutput:\n%s", want, out)
 		}
 	}
-	if len(f.putBodies) != 0 {
-		t.Errorf("no PUT should happen when a field is invalid: %v", f.putRaw)
+}
+
+// A locally-invalid value fails fast (exit 2) even when a server-side
+// field in the same call may also be bad: local syntax is validated
+// before any API call, so the server-derived check never runs.
+func TestTaskEditLocalUsageErrorPrecedesServerValidation(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	// No handlers registered: resolving the assignee would need the API
+	// and fail loudly; exit 2 proves the local check came first.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker", "--assignee", "zoe")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
+	}
+	if want := "valid: urgent, high, normal, low, none"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
 	}
 }
 

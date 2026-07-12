@@ -12,7 +12,10 @@ first. Every command must keep the contract:
 
 - stdout carries structured data AND errors; stderr is diagnostics only
 - exit codes: 0 = success (including idempotent no-ops), 1 = error,
-  2 = usage error (unknown flags rejected with valid ones listed inline)
+  2 = usage error; anything decidable locally (unknown flags, malformed
+  values like a bad date or priority) is a usage error caught before any
+  API call, while server-derived validation (unknown member, status,
+  tag) exits 1 - both kinds aggregate all bad fields into one report
 - zero results are stated explicitly ("tasks: 0 open tasks...")
 - long text is truncated with a total-size hint and a `--full` escape
   hatch suggested only when actually truncated
