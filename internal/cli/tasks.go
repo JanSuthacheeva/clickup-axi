@@ -310,7 +310,7 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	fmt.Fprintf(out, "tasks[%d]{%s}:\n", len(tasks), fieldsHeader("id,title,status,due", extra))
 	for i := range tasks {
 		t := &tasks[i]
-		fmt.Fprintf(out, "  %s,%s,%s,%s%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date(), fieldsCells(t, extra))
+		fmt.Fprintf(out, "  %s,%s,%s,%s%s\n", output.ToonCell(displayID(t)), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date(), fieldsCells(t, extra))
 	}
 	help := []string{"Run `clickup-axi tasks <id>` for details and comments"}
 	if !lastPage {

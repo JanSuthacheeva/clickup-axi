@@ -54,6 +54,11 @@ func TestContextShowsCappedDueSortedDashboard(t *testing.T) {
 	if !strings.Contains(out, "Run `clickup-axi tasks` for all 6 open tasks") {
 		t.Errorf("missing total-hint help line\noutput:\n%s", out)
 	}
+	// The dashboard loads on every session: the populated path carries
+	// only the two load-bearing hints, no generic --help pointer.
+	if !strings.Contains(out, "help[2]:") || strings.Contains(out, "for all commands") {
+		t.Errorf("populated dashboard help must be exactly the two task hints\noutput:\n%s", out)
+	}
 }
 
 func TestContextUncappedHeaderAndHelp(t *testing.T) {
