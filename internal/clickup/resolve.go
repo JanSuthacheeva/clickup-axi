@@ -11,9 +11,10 @@ import (
 // taskRef addresses a task by internal id (86ey3tx8m) or custom id
 // (HGAI-2316); custom ids need the workspace passed along.
 type taskRef struct {
-	id     string
-	custom bool
-	teamID string
+	id              string
+	custom          bool
+	teamID          string
+	includeSubtasks bool
 }
 
 // CustomIDsForced reports whether CLICKUP_AXI_CUSTOM_IDS opts this
@@ -33,18 +34,30 @@ func CustomIDsForced() bool {
 // does not know it (404, or 401 which ClickUp also returns for ids
 // outside the token's scope).
 func (c *Client) GetTaskByID(id string) (*Task, *APIError) {
+	return c.getTaskByID(id, false)
+}
+
+// GetTaskWithSubtasksByID resolves a user-supplied id like GetTaskByID,
+// while asking ClickUp to include the task's children. It is deliberately
+// separate so mutation and validation lookups do not pay for relationship
+// data they never render.
+func (c *Client) GetTaskWithSubtasksByID(id string) (*Task, *APIError) {
+	return c.getTaskByID(id, true)
+}
+
+func (c *Client) getTaskByID(id string, includeSubtasks bool) (*Task, *APIError) {
 	c.DateLocation()
 	if CustomIDsForced() {
-		return c.getTaskByCustomID(id)
+		return c.getTaskByCustomID(id, includeSubtasks)
 	}
-	t, err := c.getTask(taskRef{id: id})
+	t, err := c.getTask(taskRef{id: id, includeSubtasks: includeSubtasks})
 	if err == nil {
 		return t, nil
 	}
 	if err.Status != http.StatusNotFound && err.Status != http.StatusUnauthorized {
 		return nil, err
 	}
-	t, customErr := c.getTaskByCustomID(id)
+	t, customErr := c.getTaskByCustomID(id, includeSubtasks)
 	if customErr == nil {
 		return t, nil
 	}
@@ -57,12 +70,12 @@ func (c *Client) GetTaskByID(id string) (*Task, *APIError) {
 
 // getTaskByCustomID resolves ids like HGAI-2316, which ClickUp stores
 // uppercase and only matches with the workspace id attached.
-func (c *Client) getTaskByCustomID(id string) (*Task, *APIError) {
+func (c *Client) getTaskByCustomID(id string, includeSubtasks bool) (*Task, *APIError) {
 	team, err := c.SelectTeam()
 	if err != nil {
 		return nil, err
 	}
-	return c.getTask(taskRef{id: strings.ToUpper(id), custom: true, teamID: team.ID})
+	return c.getTask(taskRef{id: strings.ToUpper(id), custom: true, teamID: team.ID, includeSubtasks: includeSubtasks})
 }
 
 // maxParentHops bounds the ancestor walk in ParentWouldCycle. ClickUp
@@ -96,6 +109,9 @@ func (c *Client) getTask(ref taskRef) (*Task, *APIError) {
 	// The markdown source of the description only comes along on
 	// request; edits that append to the body need it.
 	q.Set("include_markdown_description", "true")
+	if ref.includeSubtasks {
+		q.Set("include_subtasks", "true")
+	}
 	if ref.custom {
 		q.Set("custom_task_ids", "true")
 		q.Set("team_id", ref.teamID)

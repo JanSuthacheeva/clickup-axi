@@ -102,8 +102,12 @@ type Task struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"list"`
-	Tags  []Tag `json:"tags"`
-	Space struct {
+	Tags []Tag `json:"tags"`
+	// Subtasks is populated only by the detail-specific task fetch. Keeping
+	// it on Task lets the API response carry the same compact task shape
+	// without introducing a second relationship type.
+	Subtasks []Task `json:"subtasks"`
+	Space    struct {
 		ID string `json:"id"`
 	} `json:"space"`
 }
