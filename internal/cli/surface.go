@@ -88,7 +88,7 @@ var surface = []command{
 	},
 	{
 		usage:   "tasks edit <id>",
-		summary: "Change status, assignees, priority, name, due date, description, tags",
+		summary: "Change status, assignees, priority, name, due date, description, tags, parent",
 		skill:   `clickup-axi tasks edit <id> --status "<status>"`,
 	},
 	{
@@ -102,6 +102,10 @@ var surface = []command{
 	{
 		skill:   `clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>`,
 		comment: "--body replaces the description, --append-body adds below it; tags must already exist in the space",
+	},
+	{
+		skill:   `clickup-axi tasks edit <id> --parent <task id>`,
+		comment: "make a task a subtask or change its parent; both tasks must be in the same list",
 	},
 	{
 		usage:   "tasks comment <id>",

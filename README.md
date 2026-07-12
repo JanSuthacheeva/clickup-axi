@@ -15,7 +15,7 @@ listing open tasks (yours or a teammate's, paged past 100 with
 --page, extra columns with --fields), finding a task by words in
 its title or description, viewing one task with its comments, creating
 a task or subtask with its fields set in one call, editing
-its status, assignees, priority, due date, name, description, or tags,
+its status, assignees, priority, due date, name, description, tags, or parent,
 commenting on it, and discovering the spaces and Lists to target.
 
 ## Installation
@@ -57,8 +57,13 @@ clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me   # reassign (nam
 clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01   # multi-field edit, one atomic call
 clickup-axi tasks edit HGAI-2316 --append-body "QA notes ..."       # add to the description
 clickup-axi tasks edit HGAI-2316 --add-tag qa --remove-tag wip      # existing space tags only
+clickup-axi tasks edit HGAI-2316 --parent HGAI-2300                 # make/move a subtask (same list)
 clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
 ```
+
+`tasks edit --parent <task-id>` can make a task a subtask or change
+its parent within the same List. ClickUp's API cannot clear a parent,
+so promoting a subtask to a standalone task must be done in ClickUp.
 
 Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`).
 `clickup-axi tasks --help` and `clickup-axi search --help` have flags

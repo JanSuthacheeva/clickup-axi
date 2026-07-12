@@ -83,7 +83,10 @@ id), `--priority urgent|high|normal|low|none` (none clears),
 `--append-body "<markdown>"` adds below it (prefer append when the
 existing description should survive). `--add-tag`/`--remove-tag` take
 existing space tags only; an unknown tag fails with the space's tags
-inlined. Every invalid field is reported together with the others
+inlined. `--parent <task id>` makes a task a subtask or moves a subtask
+under another parent in the same list. ClickUp's API cannot clear a
+parent, so promoting a subtask to a standalone task must be done in
+ClickUp. Every invalid field is reported together with the others
 before anything is written - fix them all and retry once. Re-applying
 the current state (same status, same assignees, existing tag) is a
 stated no-op.

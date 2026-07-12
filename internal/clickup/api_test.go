@@ -82,3 +82,25 @@ func TestCreateTaskOmitsUnsetFields(t *testing.T) {
 		t.Errorf("POST body = %#v, want only the name", body)
 	}
 }
+
+func TestUpdateTaskMapsParent(t *testing.T) {
+	var body map[string]any
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	mux.HandleFunc("PUT /api/v2/task/child1", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("PUT body did not decode: %v", err)
+		}
+		w.Write([]byte(`{}`))
+	})
+	c := New(srv.URL+"/api/v2", "pk_test", srv.Client())
+
+	if err := c.UpdateTask("child1", TaskEdit{Parent: "parent1"}); err != nil {
+		t.Fatalf("UpdateTask() error = %v", err)
+	}
+	want := map[string]any{"parent": "parent1"}
+	if !reflect.DeepEqual(body, want) {
+		t.Errorf("PUT body = %#v, want %#v", body, want)
+	}
+}
