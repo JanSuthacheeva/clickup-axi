@@ -453,8 +453,12 @@ func TestForcedCustomIDsAreShownEverywhere(t *testing.T) {
 			{"id": "86ey2", "custom_id": null, "name": "No custom id", "status": {"status": "to do"}, "due_date": null}
 		]}`))
 	})
+	// A long description forces truncation so the detail view emits its
+	// one remaining help hint (--full), which must carry the custom id.
+	longTaskJSON := strings.Replace(taskJSON,
+		"After OAuth callback the user lands on a 404.", strings.Repeat("x", 1000), 1)
 	f.mux.HandleFunc("GET /api/v2/task/AIKK-99", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(taskJSON))
+		w.Write([]byte(longTaskJSON))
 	})
 	f.comments(t, "abc123", `{"comments": []}`)
 
@@ -476,7 +480,7 @@ func TestForcedCustomIDsAreShownEverywhere(t *testing.T) {
 	if !strings.Contains(out, "id: AIKK-99") {
 		t.Errorf("detail view must show the custom id\noutput:\n%s", out)
 	}
-	if !strings.Contains(out, "tasks edit AIKK-99 --status") {
+	if !strings.Contains(out, "tasks AIKK-99 --full") {
 		t.Errorf("help hints must reference the custom id\noutput:\n%s", out)
 	}
 	if strings.Contains(out, "id: abc123") {

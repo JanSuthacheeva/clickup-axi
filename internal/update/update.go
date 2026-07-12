@@ -214,7 +214,6 @@ func Cmd(args []string, up *Updater, out io.Writer) int {
 	fmt.Fprintf(out, "update: v%s -> v%s\n", running, latest)
 	fmt.Fprintf(out, "  binary: %s (sha256 verified)\n", output.CollapseHome(up.ExePath))
 	fmt.Fprintln(out, "  skill: installed copies refresh on the next command")
-	output.WriteHelp(out, "Run `clickup-axi --version` to confirm the new version")
 	return 0
 }
 

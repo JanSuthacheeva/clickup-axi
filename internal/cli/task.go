@@ -162,10 +162,11 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 		}
 	}
 
-	help = append(help,
-		fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` to change status", displayID(t)),
-		fmt.Sprintf("Run `clickup-axi tasks comment %s --text \"<text>\"` to add a comment", displayID(t)))
-	output.WriteHelp(out, help...)
+	// A detail view is self-contained (AXI section 9): the only help
+	// hints it carries are the --full escape hatches for truncated text.
+	if len(help) > 0 {
+		output.WriteHelp(out, help...)
+	}
 }
 
 // editRequest carries the parsed flags of one tasks edit invocation.

@@ -16,7 +16,10 @@ first. Every command must keep the contract:
 - zero results are stated explicitly ("tasks: 0 open tasks...")
 - long text is truncated with a total-size hint and a `--full` escape
   hatch suggested only when actually truncated
-- every output ends with parameterized `help[]` next-step hints
+- list, error, and mutation outputs end with parameterized `help[]`
+  next-step hints; self-contained outputs (detail views, counts,
+  confirmations) omit them per AXI section 9, keeping only hints that
+  reveal truncated content (`--full`)
 - no interactive prompts on agent paths (the only exceptions: `auth login`
   and the `setup` scope prompt, both only when stdin is a real terminal;
   agent paths get a flags-only usage error instead)

@@ -23,9 +23,10 @@ metadata:
 
 # clickup-axi
 
-An agent-ergonomic ClickUp CLI (AXI). Run it directly; every output ends
-with `help[]` next-step suggestions, so follow those rather than
-guessing. `clickup-axi tasks --help` exists as a fallback.
+An agent-ergonomic ClickUp CLI (AXI). Run it directly; list, error, and
+mutation outputs end with `help[]` next-step suggestions, so follow
+those rather than guessing. `clickup-axi tasks --help` exists as a
+fallback.
 
 ## Install
 

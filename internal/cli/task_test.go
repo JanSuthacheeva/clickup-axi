@@ -195,11 +195,15 @@ func TestTaskViewIncludesComments(t *testing.T) {
 		"comments[3]{author,date,text}:",
 		`mia,2026-07-02,"Repro'd on staging, with Safari"`,
 		"jan,2026-07-01,Suspect the state param",
-		"help[",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\noutput:\n%s", want, out)
 		}
+	}
+	// A detail view is self-contained (AXI section 9): with nothing
+	// truncated, no help[] hints are appended.
+	if strings.Contains(out, "help[") {
+		t.Errorf("self-contained detail view must not append help hints\noutput:\n%s", out)
 	}
 }
 
