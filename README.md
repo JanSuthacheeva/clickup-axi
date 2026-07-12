@@ -13,7 +13,8 @@ next-step hints on its list, error, and mutation output. It covers the
 flows agents need most:
 listing open tasks (yours or a teammate's, paged past 100 with
 --page, extra columns with --fields), finding a task by words in
-its title or description, viewing one task with its comments, editing
+its title or description, viewing one task with its comments, creating
+a task or subtask with its fields set in one call, editing
 its status, assignees, priority, due date, name, description, or tags,
 commenting on it, and discovering the spaces and Lists to target.
 
@@ -48,6 +49,9 @@ clickup-axi tasks HGAI-2316          # one task with newest comments
 clickup-axi search "oauth redirect"  # find your tasks by title/description text
 clickup-axi spaces                   # active projects in the workspace
 clickup-axi lists --space "Webshop"  # Lists in a project, with folder context
+clickup-axi tasks create "Fix login flow" --list "Sprint 12" --space "Webshop"
+clickup-axi tasks create "Fix login flow" --list 901234 --priority high --assignee me
+clickup-axi tasks create "Test the redirect" --parent HGAI-2316   # subtask, list comes from the parent
 clickup-axi tasks edit HGAI-2316 --status "in review"
 clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me   # reassign (names resolve)
 clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01   # multi-field edit, one atomic call

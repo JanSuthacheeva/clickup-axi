@@ -72,6 +72,21 @@ var surface = []command{
 		comment: "widen beyond your tasks; space and assignee resolve by name",
 	},
 	{
+		usage:   `tasks create "<name>"`,
+		summary: "Create a task in a list (--list <name|id>)",
+		note:    "(--space scopes a list name; --parent makes a subtask; --status/--assignee/--priority/--due/--body/--tag set fields)",
+		skill:   `clickup-axi tasks create "<name>" --list "<list>" --space "<space>"`,
+		comment: "create a task; a list name needs --space, a numeric list id works alone",
+	},
+	{
+		skill:   `clickup-axi tasks create "<name>" --list <id> --assignee me --due <date>`,
+		comment: `fields combine at creation; --status, --priority, --body "<markdown>", --tag too`,
+	},
+	{
+		skill:   `clickup-axi tasks create "<name>" --parent <task id>`,
+		comment: "create a subtask; the list comes from the parent, no --list needed",
+	},
+	{
 		usage:   "tasks edit <id>",
 		summary: "Change status, assignees, priority, name, due date, description, tags",
 		skill:   `clickup-axi tasks edit <id> --status "<status>"`,
