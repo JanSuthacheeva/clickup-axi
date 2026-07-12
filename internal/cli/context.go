@@ -80,6 +80,9 @@ func cmdContext(args []string, c *clickup.Client, out io.Writer) int {
 			ch <- fetched{err: uErr}
 			return
 		}
+		// Prime the timezone from the user just fetched so the task page
+		// render below does not issue a second, serial GetUser.
+		c.SeedDateLocation(u.Timezone)
 		tasks, last, err := c.GetTeamTasksPage(tr.team.ID, clickup.TaskQuery{Assignees: []int64{u.ID}})
 		ch <- fetched{tasks: tasks, lastPage: last, err: err}
 	}()

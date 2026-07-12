@@ -10,6 +10,12 @@ import (
 
 const dateCacheTTL = 24 * time.Hour
 
+// dateFallbackMarker is the cache token for a profile whose timezone is
+// unset or unparseable: a stable condition, so it is memoized for the
+// TTL to avoid a GetUser refetch on every later invocation. A failed
+// request is never cached, so a transient outage still retries.
+const dateFallbackMarker = "-"
+
 var (
 	dateLocationMu sync.RWMutex
 	dateLocation   = time.Local
@@ -20,20 +26,46 @@ var (
 // do not add an API call. A missing/invalid timezone or failed request
 // silently preserves the historical time.Local behavior.
 func (c *Client) DateLocation() *time.Location {
+	c.resolveDateLocation(func() (string, bool) {
+		user, err := c.GetUser()
+		if err != nil {
+			return "", false
+		}
+		return user.Timezone, true
+	})
+	return c.dateLocation
+}
+
+// SeedDateLocation resolves the timezone from an already-fetched user's
+// profile, so a caller that has just fetched the user (the session-start
+// path) primes the cache without a second GetUser. It is a no-op once
+// the location has been resolved.
+func (c *Client) SeedDateLocation(timezone string) {
+	c.resolveDateLocation(func() (string, bool) {
+		return timezone, true
+	})
+}
+
+// resolveDateLocation runs the once-per-client resolution: on-disk cache
+// first, then fetchTimezone. fetchTimezone reports ok=false only when the
+// timezone could not be determined (a failed request), which is left
+// uncached; a fetched-but-empty/invalid zone caches the fallback marker.
+func (c *Client) resolveDateLocation(fetchTimezone func() (string, bool)) {
 	c.dateOnce.Do(func() {
 		loc := time.Local
 		if cached, ok := readDateLocationCache(c.dateCachePath); ok {
 			loc = cached
-		} else if user, err := c.GetUser(); err == nil {
-			if fetched, loadErr := time.LoadLocation(user.Timezone); loadErr == nil && user.Timezone != "" {
+		} else if tz, ok := fetchTimezone(); ok {
+			if fetched, loadErr := time.LoadLocation(tz); loadErr == nil && tz != "" {
 				loc = fetched
-				writeDateLocationCache(c.dateCachePath, user.Timezone)
+				writeDateLocationCache(c.dateCachePath, tz)
+			} else {
+				writeDateLocationCache(c.dateCachePath, dateFallbackMarker)
 			}
 		}
 		c.dateLocation = loc
 		setDateLocation(loc)
 	})
-	return c.dateLocation
 }
 
 // WorkspaceDateLocation is the location used to render ClickUp's
@@ -69,6 +101,9 @@ func readDateLocationCache(path string) (*time.Location, bool) {
 	stamp, err := time.Parse(time.RFC3339, fields[0])
 	if err != nil || time.Since(stamp) > dateCacheTTL {
 		return nil, false
+	}
+	if fields[1] == dateFallbackMarker {
+		return time.Local, true
 	}
 	loc, err := time.LoadLocation(fields[1])
 	return loc, err == nil
