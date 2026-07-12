@@ -62,6 +62,8 @@ clickup-axi tasks edit HGAI-2316 --append-body "QA notes ..."       # add to the
 clickup-axi tasks edit HGAI-2316 --add-tag qa --remove-tag wip      # existing space tags only
 clickup-axi tasks edit HGAI-2316 --parent HGAI-2300                 # make/move a subtask (same list)
 clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
+clickup-axi tasks move HGAI-2316 --list "Sprint 13" --space "Webshop"   # change the home List
+clickup-axi tasks move HGAI-2316 --list 901234 --status "backlog"       # when the target lacks the status
 clickup-axi tasks close HGAI-2316           # dry run: shows what closing would change
 clickup-axi tasks close HGAI-2316 --yes     # sets the List's closed status
 ```
@@ -69,6 +71,13 @@ clickup-axi tasks close HGAI-2316 --yes     # sets the List's closed status
 `tasks edit --parent <task-id>` can make a task a subtask or change
 its parent within the same List. ClickUp's API cannot clear a parent,
 so promoting a subtask to a standalone task must be done in ClickUp.
+
+`tasks move` changes a task's home List (sprint rollover, backlog
+grooming). The task keeps its status when the target List has it;
+otherwise the move fails with the target's statuses inlined and
+`--status` picks the landing status explicitly - never a silent remap.
+Memberships in additional Lists (the Tasks-in-Multiple-Lists ClickApp)
+are untouched, and subtasks move along with their parent.
 
 `tasks close` is the first guarded command: closing removes the task
 from every default listing, so without `--yes` it only previews the

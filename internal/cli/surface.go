@@ -121,6 +121,17 @@ var surface = []command{
 		skill:   `clickup-axi tasks comment <id> --text "<text>"`,
 	},
 	{
+		usage:   "tasks move <id>",
+		summary: "Move a task to another list (--list <name|id>)",
+		note:    "(--space scopes a list name; --status picks the landing status when the target lacks the current one)",
+		skill:   `clickup-axi tasks move <id> --list "<list>" --space "<space>"`,
+		comment: "move a task to another list; a list name needs --space, a numeric list id works alone",
+	},
+	{
+		skill:   `clickup-axi tasks move <id> --list <id> --status "<status>"`,
+		comment: "--status is only for a target list that lacks the task's status; the error echoes valid ones",
+	},
+	{
 		usage:   "tasks close <id>",
 		summary: "Close a task (sets the list's closed status)",
 		note:    "(a dry run without --yes; --yes closes)",

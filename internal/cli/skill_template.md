@@ -5,11 +5,12 @@ description: >
   the user, view a task with its comments and description by id, create
   a task or subtask in a List, change a task's status, assignees,
   priority, due date, name, description, or tags, add a comment to a
-  task, or discover a ClickUp space or List. Use when the user mentions
-  ClickUp, sprint tasks, tickets with ids like HGAI-2316 or ECOM-2254,
-  asks what is on their plate, or wants a task created, looked up,
-  summarized, commented on, reassigned, retitled, reprioritized,
-  rescheduled, tagged, or moved to another status.
+  task, move a task to another List, or discover a ClickUp space or
+  List. Use when the user mentions ClickUp, sprint tasks, tickets with
+  ids like HGAI-2316 or ECOM-2254, asks what is on their plate, or wants
+  a task created, looked up, summarized, commented on, reassigned,
+  retitled, reprioritized, rescheduled, tagged, or moved to another
+  status, List, or sprint.
 user-invocable: false
 author: Jan Suthacheeva
 metadata:
@@ -118,6 +119,14 @@ needs no reconfiguration. `clickup-axi config` shows the effective
 defaults with sources (an explicit flag beats the
 CLICKUP_AXI_DEFAULT_LIST environment variable, which beats the project
 file, which beats the personal file).
+
+`tasks move <id> --list "<list>"` moves a task to another List (for
+example into the current sprint). Like create, a list name needs
+`--space` and a numeric id works alone. The task keeps its status when
+the target List has it; otherwise the move fails with the target's
+statuses inlined - pick one and retry with `--status "<status>"`. A
+move is easily undone: the confirmation shows the previous List with
+its id, so moving back is one command.
 
 `tasks close <id>` finishes a task by setting the list's closed-type
 status - you never need to know what the list calls it. It is guarded
