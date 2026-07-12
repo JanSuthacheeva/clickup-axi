@@ -51,6 +51,47 @@ func TestSearchRanksTitleMatchesAboveDescription(t *testing.T) {
 	}
 }
 
+func TestSearchFieldsAddColumns(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": [
+			{"id": "a1", "name": "Deploy pipeline hardening", "status": {"status": "in progress"}, "due_date": "1783339200000",
+			 "assignees": [{"id": 42, "username": "jan"}],
+			 "priority": {"priority": "urgent"}}
+		]}`))
+	})
+
+	out, code := runCLI(t, c, "search", "deploy", "--fields", "priority,assignees")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"tasks[1]{id,title,status,match,due,priority,assignees}:",
+		"a1,Deploy pipeline hardening,in progress,title,2026-07-06,urgent,jan",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// Unknown names fail before any API call: no handlers are registered,
+// so a scan would surface loudly.
+func TestSearchFieldsUnknownNameIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "search", "deploy", "--fields", "checks")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{`"checks"`, "valid: assignees, priority, tags, list, url"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
 func TestSearchDefaultsToMeAndExcludesClosed(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
@@ -466,7 +507,7 @@ func TestSearchUnknownFlagIsUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "valid: --assignee, --status, --space, --list, --updated-after, --updated-before, --include-closed, --limit") {
+	if !strings.Contains(out, "valid: --assignee, --status, --space, --list, --updated-after, --updated-before, --include-closed, --limit, --fields") {
 		t.Errorf("usage error does not list valid flags inline\noutput:\n%s", out)
 	}
 }

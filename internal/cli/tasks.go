@@ -29,11 +29,15 @@ list flags (without an id):
                      resolve case-insensitively
   --page N           page of the listing (100 tasks per page; default 1);
                      a full page hints at the next one
+  --fields <names>   add columns to the listing (comma-separated);
+                     available: assignees, priority, tags, list, url
 
 view flags (with an id):
-  --comments N   comments to include (default 3)
-  --no-comments  skip comments
-  --full         complete description and all fetched comments
+  --comments N     comments to include (default 3)
+  --no-comments    skip comments
+  --full           complete description and all fetched comments
+  --fields <names> add fields the view omits (url); fields already
+                   shown are silently absorbed
 
 edit <id> (mutations; "edit" is a reserved word, not an id):
   --status "<status>"    change status; valid statuses are echoed
@@ -56,6 +60,7 @@ examples:
   clickup-axi tasks
   clickup-axi tasks --assignee ting
   clickup-axi tasks --assignee ting --space "Webshop"
+  clickup-axi tasks --fields assignees,priority
   clickup-axi tasks --page 2
   clickup-axi tasks HGAI-2316
   clickup-axi tasks 86ey3tx8m --full
@@ -92,10 +97,12 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	assignee := "me"
 	var space string
+	var fieldTokens []string
+	fieldsSet := false
 	page := 1
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--assignee", "--space":
+		case "--assignee", "--space", "--fields":
 			flag := args[i]
 			i++
 			// A flag-shaped next token is a missing value, not a value:
@@ -105,6 +112,11 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 				output.WriteError(out, fmt.Sprintf("%s needs a value", flag),
 					fmt.Sprintf("Run `clickup-axi tasks %s <value>`", flag))
 				return 2
+			}
+			if flag == "--fields" {
+				fieldTokens = append(fieldTokens, splitTokens(args[i])...)
+				fieldsSet = true
+				continue
 			}
 			if flag == "--space" {
 				space = args[i]
@@ -145,7 +157,7 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "-") {
-				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks\n  valid: --assignee, --space, --page (listing) or --comments N, --no-comments, --full (with a task id)", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks\n  valid: --assignee, --space, --page, --fields (listing) or --comments N, --no-comments, --full, --fields (with a task id)", args[i]))
 				return 2
 			}
 			output.WriteError(out, fmt.Sprintf("unexpected argument %q: a task id does not combine with listing flags", args[i]),
@@ -158,6 +170,19 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		output.WriteError(out, "listing all assignees needs --space (a workspace-wide scan is unbounded)",
 			"Run `clickup-axi tasks --assignee all --space \"<name>\"`")
 		return 2
+	}
+
+	// A --fields value that carried no names ("," or blanks) is a
+	// missing value; unknown names are decidable locally - both are
+	// usage errors caught before any API call.
+	if fieldsSet && len(fieldTokens) == 0 {
+		output.WriteError(out, "--fields needs a value",
+			"Run `clickup-axi tasks --fields assignees,priority`")
+		return 2
+	}
+	extra, unknown := resolveTaskFields(fieldTokens, []string{"id", "title", "status", "due"})
+	if len(unknown) > 0 {
+		return renderUnknownFields(out, unknown, "Run `clickup-axi tasks --fields assignees,priority`")
 	}
 
 	team, err := c.SelectTeam()
@@ -212,6 +237,9 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	if space != "" {
 		base += fmt.Sprintf(" --space %q", space)
 	}
+	if len(extra) > 0 {
+		base += " --fields " + fieldNamesOf(extra)
+	}
 
 	if len(tasks) == 0 {
 		if page > 1 {
@@ -237,10 +265,10 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	// keys at one level are invalid strict TOON (and `count:` matches
 	// the AXI aggregate example).
 	fmt.Fprintf(out, "count: %d open task%s %s%s%s\n", len(tasks), pluralS(len(tasks)), scope, spaceSuffix, suffix)
-	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
+	fmt.Fprintf(out, "tasks[%d]{%s}:\n", len(tasks), fieldsHeader("id,title,status,due", extra))
 	for i := range tasks {
 		t := &tasks[i]
-		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date())
+		fmt.Fprintf(out, "  %s,%s,%s,%s%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date(), fieldsCells(t, extra))
 	}
 	help := []string{"Run `clickup-axi tasks <id>` for details and comments"}
 	if !lastPage {

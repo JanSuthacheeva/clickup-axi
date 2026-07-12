@@ -65,6 +65,112 @@ func TestTasksListsOpenAssignedTasks(t *testing.T) {
 	}
 }
 
+// fieldedTasksJSON carries every --fields column so listing tests can
+// prove rendering of populated and absent values in one page.
+const fieldedTasksJSON = `{"tasks": [
+	{"id": "86ey1", "name": "Fix login, redirect", "status": {"status": "in progress"}, "due_date": "1783339200000",
+	 "assignees": [{"id": 1, "username": "jan"}, {"id": 2, "username": "ting"}],
+	 "priority": {"priority": "high"},
+	 "tags": [{"name": "api"}, {"name": "bug"}],
+	 "list": {"id": "901207", "name": "Sprint 12"},
+	 "url": "https://app.clickup.com/t/86ey1"},
+	{"id": "86ey2", "name": "QA checkout", "status": {"status": "to do"}, "due_date": null}
+]}`
+
+func TestTasksFieldsAddColumns(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fieldedTasksJSON))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--fields", "assignees,priority,tags,list,url")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"tasks[2]{id,title,status,due,assignees,priority,tags,list,url}:",
+		`86ey1,"Fix login, redirect",in progress,2026-07-06,"jan, ting",high,"api, bug",Sprint 12 (901207),https://app.clickup.com/t/86ey1`,
+		"86ey2,QA checkout,to do,,,,,,",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// Extra columns follow the request order, aliases land on the column
+// (--assignee the flag, assignees the field), and a name the schema
+// already carries is silently absorbed - never duplicated, never an
+// error, like re-applying a task's current state in an edit.
+func TestTasksFieldsAliasOrderAndDedupe(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fieldedTasksJSON))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--fields", "url,due", "--fields", "Assignee,URL")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "tasks[2]{id,title,status,due,url,assignees}:") {
+		t.Errorf("header must keep request order, apply aliases, and dedupe\noutput:\n%s", out)
+	}
+}
+
+// Unknown field names are decidable locally: one aggregated usage error
+// (exit 2) with the vocabulary inlined, before any API call (no
+// handlers are registered, so any call would surface loudly).
+func TestTasksFieldsUnknownNamesAggregate(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "--fields", "bogus,assignee,size")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`"bogus"`,
+		`"size"`,
+		"valid: assignees, priority, tags, list, url",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `"assignee"`) {
+		t.Errorf("the valid alias must not be reported as unknown\noutput:\n%s", out)
+	}
+}
+
+// A --fields value that carries no names ("," or spaces) is a missing
+// value, same as no value at all.
+func TestTasksFieldsEmptyValueIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "--fields", ",")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--fields needs a value") {
+		t.Errorf("output missing needs-a-value error\noutput:\n%s", out)
+	}
+}
+
+func TestTasksFieldsCarriedInPagingHint(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.fullPage(t, "9018", clickup.TeamTasksPageSize, "false", nil)
+
+	out, code := runCLI(t, c, "tasks", "--fields", "priority,url")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "Run `clickup-axi tasks --fields priority,url --page 2` for the next page"; !strings.Contains(out, want) {
+		t.Errorf("next-page hint must carry --fields forward\nwant %q\noutput:\n%s", want, out)
+	}
+}
+
 func TestTasksEmptyStateIsExplicit(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
@@ -468,8 +574,10 @@ func TestValueFlagsRejectFlagShapedValues(t *testing.T) {
 	cases := [][]string{
 		{"tasks", "--assignee", "--space"},
 		{"tasks", "--space", "--assignee", "jan"},
+		{"tasks", "--fields", "--space"},
 		{"tasks", "abc123", "--comments", "--full"},
 		{"search", "oauth", "--status", "--space"},
+		{"search", "oauth", "--fields", "--limit"},
 		{"search", "oauth", "--limit", "--include-closed"},
 		{"tasks", "edit", "abc123", "--priority", "--due"},
 		{"tasks", "edit", "abc123", "--assignee", "--unassign"},
@@ -511,7 +619,7 @@ func TestTasksUnknownFlagIsUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "valid: --assignee, --space, --page (listing) or --comments N, --no-comments, --full (with a task id)") {
+	if !strings.Contains(out, "valid: --assignee, --space, --page, --fields (listing) or --comments N, --no-comments, --full, --fields (with a task id)") {
 		t.Errorf("usage error does not list valid flags inline\noutput:\n%s", out)
 	}
 }
