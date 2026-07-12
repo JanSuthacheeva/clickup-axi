@@ -102,6 +102,14 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 			case "--space":
 				space = val
 			case "--list":
+				// A non-numeric value would be sent to the API as a list id
+				// and silently filter to nothing - a confident zero on wrong
+				// data. Decidable locally, so it fails before any API call.
+				if !allDigits(val) {
+					output.WriteError(out, fmt.Sprintf("--list needs a numeric list id, got %q", val),
+						"Run `clickup-axi lists --space \"<space>\"` to discover list ids")
+					return 2
+				}
 				list = val
 			case "--updated-after", "--updated-before":
 				// UTC is enough for the grammar gate. Relative values are

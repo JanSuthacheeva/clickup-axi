@@ -526,6 +526,19 @@ func TestSearchNeedsQuery(t *testing.T) {
 	}
 }
 
+func TestSearchListNameIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	out, code := runCLI(t, c, "search", "foo", "--list", "Sprint 12")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	want := "error: --list needs a numeric list id, got \"Sprint 12\"\n" +
+		"help[1]: Run `clickup-axi lists --space \"<space>\"` to discover list ids\n"
+	if out != want {
+		t.Errorf("usage error mismatch\ngot:\n%s\nwant:\n%s", out, want)
+	}
+}
+
 func TestSearchUnknownFlagIsUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "search", "foo", "--bogus")

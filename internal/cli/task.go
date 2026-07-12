@@ -57,7 +57,7 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 			fmt.Fprintln(out, tasksHelp)
 			return 0
 		default:
-			if strings.HasPrefix(args[i], "--") {
+			if strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, fmt.Sprintf("unknown flag %q\n  valid: --comments N, --no-comments, --full, --fields", args[i]))
 				return 2
 			}
