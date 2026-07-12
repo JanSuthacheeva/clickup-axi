@@ -5,9 +5,13 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/JanSuthacheeva/clickup-axi/internal/config"
 )
 
 // postTask registers POST /list/{id}/task and records each request
@@ -406,5 +410,162 @@ func TestTaskCreateSecondNameIsRefused(t *testing.T) {
 	}
 	if !strings.Contains(out, "tasks create takes exactly one name (quote it)") {
 		t.Errorf("output missing the quoting error\noutput:\n%s", out)
+	}
+}
+
+// projectDefaultList writes a project config file into the test's
+// working directory (the harness chdir'ed into a fresh temp dir).
+func projectDefaultList(t *testing.T, value string) string {
+	t.Helper()
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(cwd, config.ProjectFileName)
+	if err := config.Set(path, "default_list", value); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func TestTaskCreateUsesProjectDefaultList(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	projectDefaultList(t, "901234")
+	f.listInSpace(t, "901234", "Sprint 12", "90121", "to do", "done")
+	f.postTask(t, "901234", http.StatusOK, createdTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "create", "Fix login flow")
+	if code != 0 {
+		t.Fatalf("exit code = %d\noutput:\n%s", code, out)
+	}
+	want := `task: created new1 "Fix login flow"
+  list: Sprint 12 (901234) [default_list: project]
+  status: to do
+  url: https://app.clickup.com/t/new1
+help[2]:
+  Run ` + "`clickup-axi tasks new1`" + ` to see the task
+  Run ` + "`clickup-axi tasks edit new1 ...`" + ` to change its fields
+`
+	if out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+}
+
+func TestTaskCreateEnvDefaultBeatsProjectFile(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	projectDefaultList(t, "999888") // no fake registered: fetching it would 404
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "901234")
+	f.listInSpace(t, "901234", "Sprint 12", "90121", "to do")
+	f.postTask(t, "901234", http.StatusOK, createdTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "create", "Fix login flow")
+	if code != 0 {
+		t.Fatalf("exit code = %d\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "list: Sprint 12 (901234) [default_list: env]") {
+		t.Errorf("output:\n%s", out)
+	}
+}
+
+func TestTaskCreateExplicitListBeatsDefault(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "999888")
+	f.listInSpace(t, "901234", "Sprint 12", "90121", "to do")
+	f.postTask(t, "901234", http.StatusOK, createdTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "create", "Fix login flow", "--list", "901234")
+	if code != 0 {
+		t.Fatalf("exit code = %d\noutput:\n%s", code, out)
+	}
+	if strings.Contains(out, "default_list") {
+		t.Errorf("explicit --list must not be annotated as a default:\n%s", out)
+	}
+}
+
+func TestTaskCreateParentBeatsDefault(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "999888") // would 404 if consulted
+	f.task(t, "86parent", taskJSON)
+	f.postTask(t, "901234", http.StatusOK, createdTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "create", "Fix login flow", "--parent", "86parent")
+	if code != 0 {
+		t.Fatalf("exit code = %d\noutput:\n%s", code, out)
+	}
+	if strings.Contains(out, "default_list") {
+		t.Errorf("a subtask create must ignore the default list:\n%s", out)
+	}
+}
+
+func TestTaskCreateFolderDefaultDerivesCurrentList(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	projectDefaultList(t, "folder:9012")
+	f.folder(t, "9012", sprintsFolderJSON)
+	f.listInSpace(t, "902", "Sprint 2", "90121", "to do")
+	created := `{"id": "new2", "name": "Fix login flow", "status": {"status": "to do"},
+		"url": "https://app.clickup.com/t/new2", "list": {"id": "902", "name": "Sprint 2"}}`
+	f.postTask(t, "902", http.StatusOK, created)
+
+	out, code := runCLI(t, c, "tasks", "create", "Fix login flow")
+	if code != 0 {
+		t.Fatalf("exit code = %d\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "list: Sprint 2 (902) [default_list: project]") {
+		t.Errorf("output:\n%s", out)
+	}
+}
+
+func TestTaskCreateFolderDefaultWithoutLists(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	projectDefaultList(t, "folder:9012")
+	f.folder(t, "9012", `{"id": "9012", "name": "Sprints", "lists": []}`)
+
+	out, code := runCLI(t, c, "tasks", "create", "Fix login flow")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `default_list folder "Sprints"`) ||
+		!strings.Contains(out, "has no lists") {
+		t.Errorf("output:\n%s", out)
+	}
+}
+
+func TestTaskCreateStaleDefaultListId(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	path := projectDefaultList(t, "999888") // list gone: the fake 404s
+
+	out, code := runCLI(t, c, "tasks", "create", "Fix login flow")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `default_list points at list "999888" (project `+path+`), which no longer exists`) {
+		t.Errorf("output:\n%s", out)
+	}
+	if !strings.Contains(out, "Run `clickup-axi config set default_list ...` to fix it") {
+		t.Errorf("output missing recovery hint:\n%s", out)
+	}
+}
+
+func TestTaskCreateMalformedDefaultValue(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "Sprint 12")
+
+	out, code := runCLI(t, c, "tasks", "create", "Fix login flow")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `default_list "Sprint 12" (env CLICKUP_AXI_DEFAULT_LIST) is not a list id or folder:<id>`) {
+		t.Errorf("output:\n%s", out)
+	}
+}
+
+func TestTaskCreateNoDefaultKeepsUsageErrorWithConfigHint(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	out, code := runCLI(t, c, "tasks", "create", "Fix login")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "Or set a default once: `clickup-axi config set default_list") {
+		t.Errorf("output missing the config hint:\n%s", out)
 	}
 }
