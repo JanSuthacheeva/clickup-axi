@@ -22,13 +22,14 @@ func (c *Client) CreateComment(taskID, text string) *APIError {
 }
 
 // TaskEdit is a mutation of a task's fields. Zero values leave a field
-// unchanged: "" for Status/Name, nil for Priority/DueDate and the
+// unchanged: "" for Status/Name/Parent, nil for Priority/DueDate and the
 // assignee lists. Priority 0 and DueDate 0 clear their field (JSON
 // null). It maps to a single PUT /task/{id} so all field changes
 // commit atomically in one request.
 type TaskEdit struct {
 	Status       string
 	Name         string
+	Parent       string  // internal task id; the API cannot clear a parent
 	Priority     *int    // nil = unchanged, 0 = clear, 1 (urgent) .. 4 (low)
 	DueDate      *int64  // nil = unchanged, 0 = clear, else millisecond epoch
 	Body         *string // nil = unchanged, else full markdown replacement
@@ -43,6 +44,9 @@ func (c *Client) UpdateTask(taskID string, edit TaskEdit) *APIError {
 	}
 	if edit.Name != "" {
 		body["name"] = edit.Name
+	}
+	if edit.Parent != "" {
+		body["parent"] = edit.Parent
 	}
 	if edit.Priority != nil {
 		if *edit.Priority == 0 {

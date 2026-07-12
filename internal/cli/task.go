@@ -212,18 +212,20 @@ type editRequest struct {
 	bodySet              bool
 	appendBody           string
 	appendSet            bool
+	parent               string
+	parentSet            bool
 	addTags, remTags     []string
 }
 
 // hasChange reports whether any mutation flag was given.
 func (r *editRequest) hasChange() bool {
 	return r.statusSet || r.prioritySet || r.nameSet || r.dueSet ||
-		r.bodySet || r.appendSet ||
+		r.bodySet || r.appendSet || r.parentSet ||
 		len(r.addTokens) > 0 || len(r.remTokens) > 0 ||
 		len(r.addTags) > 0 || len(r.remTags) > 0
 }
 
-const editValidFlags = "--status, --assignee, --unassign, --priority, --name, --due, --body, --append-body, --add-tag, --remove-tag"
+const editValidFlags = "--status, --assignee, --unassign, --priority, --name, --due, --body, --append-body, --parent, --add-tag, --remove-tag"
 
 func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	var r editRequest
@@ -296,6 +298,14 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			}
 			r.appendBody = args[i]
 			r.appendSet = true
+		case "--parent":
+			i++
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
+				output.WriteError(out, "--parent needs a value", "Run `clickup-axi tasks edit <id> --parent <task-id>`")
+				return 2
+			}
+			r.parent = args[i]
+			r.parentSet = true
 		case "--add-tag":
 			i++
 			if i >= len(args) || strings.HasPrefix(args[i], "-") {
@@ -388,6 +398,9 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			usageErrs = append(usageErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01), a relative +3days / -1week, or none to clear", r.due))
 		}
 	}
+	if r.parentSet && (strings.TrimSpace(r.parent) == "" || strings.EqualFold(r.parent, "none")) {
+		usageErrs = append(usageErrs, "parent cannot be cleared\n  ClickUp's API cannot promote a subtask to a standalone task; move it in ClickUp instead")
+	}
 	if len(usageErrs) > 0 {
 		return renderFieldErrors(out, r.id, usageErrs, 2)
 	}
@@ -410,6 +423,25 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	// the edit grows more fields, each adds its check here (or to the
 	// local usage stage above if it parses without the API).
 	var fieldErrs []string
+	var parentTask *clickup.Task
+	if r.parentSet {
+		var perr *clickup.APIError
+		parentTask, perr = c.GetTaskByID(r.parent)
+		if perr != nil {
+			return renderAPIError(out, perr)
+		}
+		if parentTask.ID == t.ID {
+			fieldErrs = append(fieldErrs, "parent must be a different task")
+		} else if parentTask.List.ID != t.List.ID {
+			fieldErrs = append(fieldErrs, fmt.Sprintf("parent %s is in list %s %q, not this task's list %s %q",
+				displayID(parentTask), parentTask.List.ID, parentTask.List.Name, t.List.ID, t.List.Name))
+		} else if cycle, cerr := c.ParentWouldCycle(t.ID, parentTask); cerr != nil {
+			return renderAPIError(out, cerr)
+		} else if cycle {
+			fieldErrs = append(fieldErrs, fmt.Sprintf(
+				"parent %s is a subtask of this task; that would create a cycle", displayID(parentTask)))
+		}
+	}
 
 	var addUsers, remUsers []clickup.User
 	if len(r.addTokens) > 0 || len(r.remTokens) > 0 {
@@ -532,8 +564,9 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	// source is unreliable, and re-sending the same content is harmless.
 	bodyChanges := r.bodySet || r.appendSet
 	tagChanges := len(addTags) > 0 || len(remTags) > 0
+	parentChanges := parentTask != nil && t.Parent != parentTask.ID
 
-	if !statusChanges && !assigneeChanges && !priorityChanges && !dueChanges && !nameChanges && !bodyChanges && !tagChanges {
+	if !statusChanges && !assigneeChanges && !priorityChanges && !dueChanges && !nameChanges && !bodyChanges && !tagChanges && !parentChanges {
 		var reasons []string
 		if r.statusSet {
 			reasons = append(reasons, fmt.Sprintf("already has status %q", t.Status.Status))
@@ -556,6 +589,9 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		}
 		if len(r.addTags) > 0 || len(r.remTags) > 0 {
 			reasons = append(reasons, "tags already as requested")
+		}
+		if r.parentSet {
+			reasons = append(reasons, fmt.Sprintf("already has parent %s", displayID(parentTask)))
 		}
 		fmt.Fprintf(out, "task: %s no changes (%s)\n", displayID(t), strings.Join(reasons, ", "))
 		return 0
@@ -593,6 +629,9 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		}
 		edit.Body = &content
 	}
+	if parentChanges {
+		edit.Parent = parentTask.ID
+	}
 
 	// The write phase: tags first (one call per tag - the API has no
 	// batch form), then the atomic PUT. POST and DELETE invert exactly,
@@ -615,7 +654,7 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		}
 		appliedRems = append(appliedRems, tg)
 	}
-	putNeeded := statusChanges || assigneeChanges || priorityChanges || dueChanges || nameChanges || bodyChanges
+	putNeeded := statusChanges || assigneeChanges || priorityChanges || dueChanges || nameChanges || bodyChanges || parentChanges
 	if putNeeded {
 		if err := c.UpdateTask(t.ID, edit); err != nil {
 			return renderWriteFailure(out, c, t, appliedAdds, appliedRems,
@@ -642,6 +681,17 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			fmt.Fprintf(out, "task: %s description appended (+%d chars)\n", displayID(t), len([]rune(r.appendBody)))
 		} else {
 			fmt.Fprintf(out, "task: %s description replaced (%d chars)\n", displayID(t), len([]rune(r.body)))
+		}
+	}
+	if parentChanges {
+		// Only the new parent is shown, via displayID so it honors forced
+		// custom ids. The prior parent is a bare internal id (Task.Parent);
+		// rendering it would either clash with the new id's format or force
+		// a fetch of a task that may no longer be in scope, so it is omitted.
+		if t.Parent == "" {
+			fmt.Fprintf(out, "task: %s parent set: %s\n", displayID(t), displayID(parentTask))
+		} else {
+			fmt.Fprintf(out, "task: %s parent changed to %s\n", displayID(t), displayID(parentTask))
 		}
 	}
 	if tagChanges {

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tasks edit <id> --parent <task id>` makes a task a subtask or moves
+  it under a different parent, sent atomically with any other field
+  changes in the same PUT. The parent must be a different task in the
+  same list, and a request that would make a task a descendant of itself
+  is refused before any write (the proposed parent's ancestor chain is
+  walked to catch cycles at any depth). Clearing a parent is unsupported
+  by ClickUp's API and reported as such. A task that already has the
+  requested parent is a stated no-op.
 - `tasks create "<name>" --list <name|id>` creates a task, completing
   the write loop: `--status`, `--assignee`, `--priority`, `--due`,
   `--body`, and `--tag` set fields at creation in one atomic POST, all

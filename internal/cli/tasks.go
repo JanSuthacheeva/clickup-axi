@@ -63,6 +63,8 @@ edit <id> (mutations; "edit" is a reserved word, not an id):
   --due <date>           set due (YYYY-MM-DD or +3days/-1week), or none
   --body "<markdown>"    replace the description
   --append-body "<md>"   append to the description instead
+  --parent <task-id>     make this a subtask or move it under another
+                         parent in the same list; none is unsupported
   --add-tag <tag>        add an existing space tag (repeatable, comma-separated)
   --remove-tag <tag>     remove a tag (repeatable, comma-separated)
 
@@ -83,6 +85,7 @@ examples:
   clickup-axi tasks edit HGAI-2316 --status "in review"
   clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me
   clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01
+  clickup-axi tasks edit HGAI-2316 --parent HGAI-2300
   clickup-axi tasks edit HGAI-2316 --append-body "QA: repro steps ..." --add-tag qa
   clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"`
 

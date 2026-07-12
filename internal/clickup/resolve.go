@@ -65,6 +65,32 @@ func (c *Client) getTaskByCustomID(id string) (*Task, *APIError) {
 	return c.getTask(taskRef{id: strings.ToUpper(id), custom: true, teamID: team.ID})
 }
 
+// maxParentHops bounds the ancestor walk in ParentWouldCycle. ClickUp
+// nests subtasks only a handful of levels deep; the cap is a safety net
+// against an unexpected or malformed chain, not a real limit.
+const maxParentHops = 32
+
+// ParentWouldCycle reports whether making proposedParent the parent of
+// the task identified by internalID would create a cycle - that is,
+// proposedParent already sits below that task in the subtask tree. It
+// walks proposedParent's ancestor chain, which is addressed by internal
+// id (Task.Parent is always internal), one GET per hop, looking for
+// internalID. The direct case (proposedParent IS the task) is caught by
+// the caller before this runs.
+func (c *Client) ParentWouldCycle(internalID string, proposedParent *Task) (bool, *APIError) {
+	for cur, hops := proposedParent, 0; cur.Parent != "" && hops < maxParentHops; hops++ {
+		if cur.Parent == internalID {
+			return true, nil
+		}
+		next, err := c.getTask(taskRef{id: cur.Parent})
+		if err != nil {
+			return false, err
+		}
+		cur = next
+	}
+	return false, nil
+}
+
 func (c *Client) getTask(ref taskRef) (*Task, *APIError) {
 	q := url.Values{}
 	// The markdown source of the description only comes along on

@@ -389,6 +389,274 @@ func TestTaskEditSameStatusIsNoOp(t *testing.T) {
 	}
 }
 
+const parentTaskJSON = `{
+	"id": "parent1",
+	"custom_id": "AIKK-100",
+	"name": "Parent task",
+	"status": {"status": "in progress"},
+	"list": {"id": "901234", "name": "Sprint 14"}
+}`
+
+func TestTaskEditSetsParent(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.task(t, "parent1", parentTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	want := "task: abc123 parent set: parent1\n" +
+		"help[1]: Run `clickup-axi tasks abc123` to see the task\n"
+	if out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+	if len(f.putBodies) != 1 || f.putBodies[0]["parent"] != "parent1" {
+		t.Errorf("PUT bodies = %#v, want one parent=parent1", f.putBodies)
+	}
+}
+
+func TestTaskEditParentUsesResolvedInternalIDs(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.task(t, "AIKK-99", editTaskJSON)
+	f.task(t, "AIKK-100", parentTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "AIKK-99", "--parent", "AIKK-100")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: AIKK-99 parent set: AIKK-100"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 1 || f.putBodies[0]["parent"] != "parent1" {
+		t.Errorf("PUT bodies = %#v, want resolved internal parent id", f.putBodies)
+	}
+}
+
+func TestTaskEditSameParentIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	child := strings.Replace(editTaskJSON, `"id": "abc123",`, `"id": "abc123", "parent": "parent1",`, 1)
+	f.task(t, "abc123", child)
+	f.task(t, "parent1", parentTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if out != "task: abc123 no changes (already has parent parent1)\n" {
+		t.Errorf("unexpected no-op output: %q", out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called for a no-op parent change: %#v", f.putBodies)
+	}
+}
+
+func TestTaskEditRejectsSelfParent(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "abc123")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "error: parent must be a different task"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite self-parenting: %#v", f.putBodies)
+	}
+}
+
+func TestTaskEditRejectsParentFromDifferentList(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	other := strings.Replace(parentTaskJSON, `"id": "901234", "name": "Sprint 14"`, `"id": "999999", "name": "Backlog"`, 1)
+	f.task(t, "parent1", other)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	want := `parent parent1 is in list 999999 "Backlog", not this task's list 901234 "Sprint 14"`
+	if !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite a cross-list parent: %#v", f.putBodies)
+	}
+}
+
+func TestTaskEditReparentDropsPriorParentID(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	// The task is already a subtask of old999; moving it under parent1
+	// must not print old999 (a bare internal id that would clash with the
+	// custom-id formatting of the new parent).
+	child := strings.Replace(editTaskJSON, `"id": "abc123",`, `"id": "abc123", "parent": "old999",`, 1)
+	f.task(t, "abc123", child)
+	f.task(t, "parent1", parentTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 parent changed to parent1\n"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if strings.Contains(out, "old999") {
+		t.Errorf("output leaked prior parent internal id:\n%s", out)
+	}
+	if len(f.putBodies) != 1 || f.putBodies[0]["parent"] != "parent1" {
+		t.Errorf("PUT bodies = %#v, want one parent=parent1", f.putBodies)
+	}
+}
+
+func TestTaskEditRejectsParentThatWouldCycle(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	// parent1 is itself a subtask of abc123, so making it abc123's parent
+	// would form a cycle. Same list keeps it past the cross-list guard.
+	sub := strings.Replace(parentTaskJSON, `"name": "Parent task",`, `"parent": "abc123", "name": "Parent task",`, 1)
+	f.task(t, "parent1", sub)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "parent parent1 is a subtask of this task; that would create a cycle"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite a cycle: %#v", f.putBodies)
+	}
+}
+
+func TestTaskEditRejectsDeepParentCycle(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	// parent1 -> mid1 -> abc123: the cycle is two hops up parent1's chain,
+	// exercising the per-hop GET walk in ParentWouldCycle.
+	top := strings.Replace(parentTaskJSON, `"name": "Parent task",`, `"parent": "mid1", "name": "Parent task",`, 1)
+	f.task(t, "parent1", top)
+	mid := `{"id": "mid1", "parent": "abc123", "name": "Middle", "status": {"status": "open"}, "list": {"id": "901234", "name": "Sprint 14"}}`
+	f.task(t, "mid1", mid)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "would create a cycle"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite a deep cycle: %#v", f.putBodies)
+	}
+}
+
+func TestTaskEditAggregatesInvalidParentAndStatus(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	other := strings.Replace(parentTaskJSON, `"id": "901234", "name": "Sprint 14"`, `"id": "999999", "name": "Backlog"`, 1)
+	f.task(t, "parent1", other)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "done")
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1", "--status", "qa")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"2 fields cannot be applied (nothing was changed)",
+		`parent parent1 is in list 999999 "Backlog"`,
+		`status "qa" not accepted in list Sprint 14`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite invalid fields: %#v", f.putBodies)
+	}
+}
+
+func TestTaskEditParentNotFoundIsTranslated(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.task(t, "AIKK-99", editTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "edit", "AIKK-99", "--parent", "MISSING")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if out != "error: task \"MISSING\" not found\n" {
+		t.Errorf("unexpected translated error: %q", out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite a missing parent: %#v", f.putBodies)
+	}
+}
+
+func TestTaskEditCannotClearParentAndAggregatesUsageErrors(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "none", "--priority", "blocker")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"2 fields cannot be applied (nothing was changed)",
+		`priority "blocker" not accepted`,
+		"parent cannot be cleared",
+		"ClickUp's API cannot promote a subtask to a standalone task",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+func TestTaskEditCombinesParentAndStatusInOnePut(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.task(t, "parent1", parentTaskJSON)
+	f.list(t, "901234", "Sprint 14", "to do", "in progress", "in review", "done")
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1", "--status", "in review")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if len(f.putBodies) != 1 || f.putBodies[0]["parent"] != "parent1" || f.putBodies[0]["status"] != "in review" {
+		t.Errorf("PUT bodies = %#v, want one atomic parent+status edit", f.putBodies)
+	}
+	for _, want := range []string{"status changed: in progress -> in review", "parent set: parent1"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+func TestTaskEditParentWriteFailureIsTranslated(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	f.task(t, "parent1", parentTaskJSON)
+	f.put(t, "abc123", http.StatusBadRequest, `{"err":"Cannot set parent","ECODE":"TASK_123"}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	want := "error: the field changes could not be applied: ClickUp rejected the request: Cannot set parent (HTTP 400)\n" +
+		"help[1]: Run `clickup-axi tasks abc123` to see the task's current state, then retry\n"
+	if out != want {
+		t.Errorf("output = %q, want %q", out, want)
+	}
+}
+
 // A combined status+assignee edit that fails at the API must not
 // misattribute the failure to the status when the status is valid: the
 // single PUT is atomic, so nothing partially committed, and a valid
@@ -744,7 +1012,7 @@ func TestTaskEditUnknownFlagListsValid(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if want := "valid: --status, --assignee, --unassign, --priority, --name, --due, --body, --append-body, --add-tag, --remove-tag"; !strings.Contains(out, want) {
+	if want := "valid: --status, --assignee, --unassign, --priority, --name, --due, --body, --append-body, --parent, --add-tag, --remove-tag"; !strings.Contains(out, want) {
 		t.Errorf("output missing valid-flag list\noutput:\n%s", out)
 	}
 }

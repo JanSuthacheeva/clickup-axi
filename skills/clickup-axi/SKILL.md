@@ -86,6 +86,7 @@ clickup-axi tasks edit <id> --status "<status>"
 clickup-axi tasks edit <id> --assignee <who> --unassign <who>            # reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id
 clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>" # priority: urgent|high|normal|low|none; due: YYYY-MM-DD, +3days/-1week, or none; fields combine in one call
 clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>   # --body replaces the description, --append-body adds below it; tags must already exist in the space
+clickup-axi tasks edit <id> --parent <task id>                           # make a task a subtask or change its parent; both tasks must be in the same list
 clickup-axi tasks comment <id> --text "<text>"
 clickup-axi setup --global                                               # install the session-start dashboard hook (only after user consent)
 clickup-axi update                                                       # self-update to the latest release (only after user consent)
@@ -106,7 +107,10 @@ id), `--priority urgent|high|normal|low|none` (none clears),
 `--append-body "<markdown>"` adds below it (prefer append when the
 existing description should survive). `--add-tag`/`--remove-tag` take
 existing space tags only; an unknown tag fails with the space's tags
-inlined. Every invalid field is reported together with the others
+inlined. `--parent <task id>` makes a task a subtask or moves a subtask
+under another parent in the same list. ClickUp's API cannot clear a
+parent, so promoting a subtask to a standalone task must be done in
+ClickUp. Every invalid field is reported together with the others
 before anything is written - fix them all and retry once. Re-applying
 the current state (same status, same assignees, existing tag) is a
 stated no-op.

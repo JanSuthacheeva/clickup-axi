@@ -124,7 +124,7 @@ commands:
                            (--archived shows archived Lists; folder context is included)
   tasks create "<name>"    Create a task in a list (--list <name|id>)
                            (--space scopes a list name; --parent makes a subtask; --status/--assignee/--priority/--due/--body/--tag set fields)
-  tasks edit <id>          Change status, assignees, priority, name, due date, description, tags
+  tasks edit <id>          Change status, assignees, priority, name, due date, description, tags, parent
   tasks comment <id>       Add a comment to a task (--text "<text>")
   auth login               Store a personal API token (read from stdin)
   auth logout              Remove the stored token

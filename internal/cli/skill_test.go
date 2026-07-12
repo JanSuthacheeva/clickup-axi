@@ -26,6 +26,7 @@ func TestSkillPrintsGeneratedSkill(t *testing.T) {
 		`clickup-axi tasks edit <id> --status "<status>"`,
 		`clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>" # priority: urgent|high|normal|low|none; due: YYYY-MM-DD, +3days/-1week, or none; fields combine in one call`,
 		`clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>   # --body replaces the description, --append-body adds below it; tags must already exist in the space`,
+		`clickup-axi tasks edit <id> --parent <task id>`,
 		"## Behavior contract",
 	} {
 		if !strings.Contains(out, want) {
