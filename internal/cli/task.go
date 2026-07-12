@@ -425,6 +425,11 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		} else if parentTask.List.ID != t.List.ID {
 			fieldErrs = append(fieldErrs, fmt.Sprintf("parent %s is in list %s %q, not this task's list %s %q",
 				displayID(parentTask), parentTask.List.ID, parentTask.List.Name, t.List.ID, t.List.Name))
+		} else if cycle, cerr := c.ParentWouldCycle(t.ID, parentTask); cerr != nil {
+			return renderAPIError(out, cerr)
+		} else if cycle {
+			fieldErrs = append(fieldErrs, fmt.Sprintf(
+				"parent %s is a subtask of this task; that would create a cycle", displayID(parentTask)))
 		}
 	}
 
@@ -669,7 +674,15 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 	if parentChanges {
-		fmt.Fprintf(out, "task: %s parent: %s -> %s\n", displayID(t), orNone(t.Parent), displayID(parentTask))
+		// Only the new parent is shown, via displayID so it honors forced
+		// custom ids. The prior parent is a bare internal id (Task.Parent);
+		// rendering it would either clash with the new id's format or force
+		// a fetch of a task that may no longer be in scope, so it is omitted.
+		if t.Parent == "" {
+			fmt.Fprintf(out, "task: %s parent set: %s\n", displayID(t), displayID(parentTask))
+		} else {
+			fmt.Fprintf(out, "task: %s parent changed to %s\n", displayID(t), displayID(parentTask))
+		}
 	}
 	if tagChanges {
 		fmt.Fprintf(out, "task: %s tags%s%s\n", displayID(t), signedList("+", addTags), signedList("-", remTags))

@@ -407,7 +407,7 @@ func TestTaskEditSetsParent(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	want := "task: abc123 parent: none -> parent1\n" +
+	want := "task: abc123 parent set: parent1\n" +
 		"help[1]: Run `clickup-axi tasks abc123` to see the task\n"
 	if out != want {
 		t.Errorf("output = %q, want %q", out, want)
@@ -429,7 +429,7 @@ func TestTaskEditParentUsesResolvedInternalIDs(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if want := "task: AIKK-99 parent: none -> AIKK-100"; !strings.Contains(out, want) {
+	if want := "task: AIKK-99 parent set: AIKK-100"; !strings.Contains(out, want) {
 		t.Errorf("output missing %q\noutput:\n%s", want, out)
 	}
 	if len(f.putBodies) != 1 || f.putBodies[0]["parent"] != "parent1" {
@@ -487,6 +487,73 @@ func TestTaskEditRejectsParentFromDifferentList(t *testing.T) {
 	}
 	if len(f.putBodies) != 0 {
 		t.Errorf("PUT was called despite a cross-list parent: %#v", f.putBodies)
+	}
+}
+
+func TestTaskEditReparentDropsPriorParentID(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	// The task is already a subtask of old999; moving it under parent1
+	// must not print old999 (a bare internal id that would clash with the
+	// custom-id formatting of the new parent).
+	child := strings.Replace(editTaskJSON, `"id": "abc123",`, `"id": "abc123", "parent": "old999",`, 1)
+	f.task(t, "abc123", child)
+	f.task(t, "parent1", parentTaskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "task: abc123 parent changed to parent1\n"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if strings.Contains(out, "old999") {
+		t.Errorf("output leaked prior parent internal id:\n%s", out)
+	}
+	if len(f.putBodies) != 1 || f.putBodies[0]["parent"] != "parent1" {
+		t.Errorf("PUT bodies = %#v, want one parent=parent1", f.putBodies)
+	}
+}
+
+func TestTaskEditRejectsParentThatWouldCycle(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	// parent1 is itself a subtask of abc123, so making it abc123's parent
+	// would form a cycle. Same list keeps it past the cross-list guard.
+	sub := strings.Replace(parentTaskJSON, `"name": "Parent task",`, `"parent": "abc123", "name": "Parent task",`, 1)
+	f.task(t, "parent1", sub)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "parent parent1 is a subtask of this task; that would create a cycle"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite a cycle: %#v", f.putBodies)
+	}
+}
+
+func TestTaskEditRejectsDeepParentCycle(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", editTaskJSON)
+	// parent1 -> mid1 -> abc123: the cycle is two hops up parent1's chain,
+	// exercising the per-hop GET walk in ParentWouldCycle.
+	top := strings.Replace(parentTaskJSON, `"name": "Parent task",`, `"parent": "mid1", "name": "Parent task",`, 1)
+	f.task(t, "parent1", top)
+	mid := `{"id": "mid1", "parent": "abc123", "name": "Middle", "status": {"status": "open"}, "list": {"id": "901234", "name": "Sprint 14"}}`
+	f.task(t, "mid1", mid)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--parent", "parent1")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	if want := "would create a cycle"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT was called despite a deep cycle: %#v", f.putBodies)
 	}
 }
 
@@ -566,7 +633,7 @@ func TestTaskEditCombinesParentAndStatusInOnePut(t *testing.T) {
 	if len(f.putBodies) != 1 || f.putBodies[0]["parent"] != "parent1" || f.putBodies[0]["status"] != "in review" {
 		t.Errorf("PUT bodies = %#v, want one atomic parent+status edit", f.putBodies)
 	}
-	for _, want := range []string{"status changed: in progress -> in review", "parent: none -> parent1"} {
+	for _, want := range []string{"status changed: in progress -> in review", "parent set: parent1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\noutput:\n%s", want, out)
 		}
