@@ -225,6 +225,57 @@ func TestTaskViewTruncatesLongDescription(t *testing.T) {
 	}
 }
 
+// Truncated comment text must disclose itself like a truncated
+// description does: total size shown, --full suggested - even when the
+// comment count was not cut (2 of 2 shown, but one text was clipped).
+func TestTaskViewTruncatedCommentTextHintsFull(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	long := strings.Repeat("y", 500)
+	f.comments(t, "abc123", fmt.Sprintf(`{"comments": [
+		{"id": "9", "comment_text": %q, "user": {"id": 2, "username": "mia"}, "date": 1782993600000},
+		{"id": "8", "comment_text": "short", "user": {"id": 1, "username": "jan"}, "date": "1782907200000"}
+	]}`, long))
+
+	out, code := runCLI(t, c, "tasks", "abc123")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "comments: showing 2 of 2 (newest first)") {
+		t.Errorf("output missing count line\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "... (truncated, 500 chars total)") {
+		t.Errorf("truncated comment text missing its size hint\noutput:\n%s", out)
+	}
+	if want := "--full` for full comment text"; !strings.Contains(out, want) {
+		t.Errorf("output missing the --full escape hatch %q\noutput:\n%s", want, out)
+	}
+	if n := strings.Count(out, "--full` for full comment text"); n != 1 {
+		t.Errorf("comment --full hint appears %d times, want 1\noutput:\n%s", n, out)
+	}
+}
+
+// --full renders the clipped text completely, with no truncation marker.
+func TestTaskViewFullShowsCompleteCommentText(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	long := strings.Repeat("y", 500)
+	f.comments(t, "abc123", fmt.Sprintf(`{"comments": [
+		{"id": "9", "comment_text": %q, "user": {"id": 2, "username": "mia"}, "date": 1782993600000}
+	]}`, long))
+
+	out, code := runCLI(t, c, "tasks", "abc123", "--full")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, long) {
+		t.Errorf("--full did not render the complete comment text\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "truncated") {
+		t.Errorf("--full output still mentions truncation\noutput:\n%s", out)
+	}
+}
+
 func TestTaskViewNoCommentsSkipsFetch(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", taskJSON)

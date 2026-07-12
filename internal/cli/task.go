@@ -142,19 +142,23 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 		}
 		fmt.Fprintf(out, "comments: showing %d of %s (newest first)\n", len(shown), total)
 		fmt.Fprintf(out, "comments[%d]{author,date,text}:\n", len(shown))
+		textCut := false
 		for _, cm := range shown {
 			text := cm.Text
 			if !full {
 				var cut bool
 				text, cut = output.TruncateRunes(text, commentLimit)
 				if cut {
-					text += "..."
+					// Like the description, a clipped text states its total
+					// so the agent knows how much --full would add.
+					text += fmt.Sprintf("... (truncated, %d chars total)", len([]rune(cm.Text)))
+					textCut = true
 				}
 			}
 			fmt.Fprintf(out, "  %s,%s,%s\n", output.ToonCell(cm.User.Username), cm.Date.InstantDate(), output.ToonCell(text))
 		}
-		if len(shown) < len(comments) || len(comments) == clickup.CommentsPageSize {
-			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all fetched comments", displayID(t)))
+		if textCut || len(shown) < len(comments) || len(comments) == clickup.CommentsPageSize {
+			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for full comment text and all fetched comments", displayID(t)))
 		}
 	}
 
