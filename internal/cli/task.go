@@ -674,14 +674,15 @@ func splitTokens(v string) []string {
 	return tokens
 }
 
-// resolveAssignees resolves each token to a member, collecting every
-// miss/ambiguity (with its inline candidates) so all bad tokens in a
-// field are reported together and one retry can clear them.
+// resolveAssignees resolves each token to a member via resolveAssignee
+// (search.go), collecting every miss/ambiguity (with its inline
+// candidates) so all bad tokens in a field are reported together and
+// one retry can clear them.
 func resolveAssignees(tokens []string, team *clickup.Team, c *clickup.Client) ([]clickup.User, []string) {
 	users := make([]clickup.User, 0, len(tokens))
 	var errs []string
 	for _, tok := range tokens {
-		u, err := resolveEditAssignee(tok, team, c)
+		u, err := resolveAssignee(tok, team, c)
 		if err != nil {
 			errs = append(errs, err.Message)
 			continue
@@ -689,21 +690,6 @@ func resolveAssignees(tokens []string, team *clickup.Team, c *clickup.Client) ([
 		users = append(users, *u)
 	}
 	return users, errs
-}
-
-// resolveEditAssignee resolves one token for a mutation: "me" is the
-// caller, a numeric token is validated against membership (unlike the
-// read-only filter path, which trusts any id), and a name/email goes
-// through ResolveMember. Validating ids keeps a non-existent id from
-// passing pre-flight and printing a false success on a no-op PUT.
-func resolveEditAssignee(token string, team *clickup.Team, c *clickup.Client) (*clickup.User, *clickup.APIError) {
-	if token == "me" {
-		return c.GetUser()
-	}
-	if id, err := strconv.ParseInt(token, 10, 64); err == nil {
-		return team.ResolveMemberID(id)
-	}
-	return team.ResolveMember(token)
 }
 
 // assigneeName prefers the resolved username; a numeric-id input

@@ -218,17 +218,19 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 	return 0
 }
 
-// resolveAssignee turns the --assignee value into a user: "me"
-// resolves the token's own user, a numeric value is used as an id
-// directly, and anything else is matched against the workspace's
-// members by name (or email). "all" is handled by the caller (no
-// assignee filter) and never reaches here.
+// resolveAssignee turns an assignee value into a member: "me" resolves
+// the token's own user, a numeric value is validated against the
+// workspace's members (they came along with the team fetch, so a typoed
+// id fails with candidates instead of scoping a listing to nobody and
+// reporting a confident zero), and anything else is matched by name or
+// email. Reads and mutations share this resolver; "all" is handled by
+// the list/search callers and never reaches here.
 func resolveAssignee(assignee string, team *clickup.Team, c *clickup.Client) (*clickup.User, *clickup.APIError) {
-	if assignee == "me" {
+	if strings.EqualFold(assignee, "me") {
 		return c.GetUser()
 	}
 	if id, err := strconv.ParseInt(assignee, 10, 64); err == nil {
-		return &clickup.User{ID: id}, nil
+		return team.ResolveMemberID(id)
 	}
 	return team.ResolveMember(assignee)
 }

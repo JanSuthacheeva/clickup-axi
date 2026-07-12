@@ -236,9 +236,12 @@ func TestTasksAssigneeByNameListsTheirTasks(t *testing.T) {
 	}
 }
 
-func TestTasksAssigneeNumericIDSkipsResolution(t *testing.T) {
+// A numeric --assignee is validated against the workspace's members
+// (they already came along with the team fetch, so this costs no extra
+// request) and labels the output with the resolved username.
+func TestTasksAssigneeNumericIDResolvesToMember(t *testing.T) {
 	f, c := newFakeClickUp(t)
-	f.me(t, 42, "jan")
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
 	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("assignees[]"); got != "189" {
 			t.Errorf("assignees[] = %q, want %q", got, "189")
@@ -250,8 +253,28 @@ func TestTasksAssigneeNumericIDSkipsResolution(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "tasks: 0 open tasks assigned to 189 in Buzzwoo") {
-		t.Errorf("output missing id-labeled empty state\noutput:\n%s", out)
+	if !strings.Contains(out, "tasks: 0 open tasks assigned to Ting Nguyen in Buzzwoo") {
+		t.Errorf("output missing username-labeled empty state\noutput:\n%s", out)
+	}
+}
+
+// A typoed numeric id must not scope the listing to nobody and report
+// a confident zero: the premise is wrong, so it fails with candidates.
+func TestTasksAssigneeUnknownNumericIDInlinesMembers(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+
+	out, code := runCLI(t, c, "tasks", "--assignee", "999")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"assignee 999 matches none of the members of Buzzwoo",
+		`189 "Ting Nguyen"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
 	}
 }
 
