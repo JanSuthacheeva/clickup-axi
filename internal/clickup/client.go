@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -68,7 +69,19 @@ type APIError struct {
 
 func (e *APIError) Error() string { return e.Message }
 
+// doV3 issues a request against the ClickUp API v3, which shares the
+// host and authentication with v2 but lives under a sibling path
+// prefix. Deriving the prefix from the v2 base keeps a single
+// configuration point for tests and production alike.
+func (c *Client) doV3(method, path string, body any, out any) *APIError {
+	return c.doBase(strings.TrimSuffix(c.base, "/v2")+"/v3", method, path, body, out)
+}
+
 func (c *Client) do(method, path string, body any, out any) *APIError {
+	return c.doBase(c.base, method, path, body, out)
+}
+
+func (c *Client) doBase(base, method, path string, body any, out any) *APIError {
 	if c.token == "" {
 		return &APIError{Status: 0, Message: ErrNoAuth}
 	}
@@ -80,7 +93,7 @@ func (c *Client) do(method, path string, body any, out any) *APIError {
 		}
 		reqBody = bytes.NewReader(b)
 	}
-	resp, apiErr := c.send(method, path, reqBody)
+	resp, apiErr := c.send(base, method, path, reqBody)
 	if apiErr != nil {
 		return apiErr
 	}
@@ -93,9 +106,9 @@ func (c *Client) do(method, path string, body any, out any) *APIError {
 	return nil
 }
 
-func (c *Client) send(method, path string, body io.Reader) (*http.Response, *APIError) {
+func (c *Client) send(base, method, path string, body io.Reader) (*http.Response, *APIError) {
 	for attempt := 0; ; attempt++ {
-		req, err := http.NewRequest(method, c.base+path, body)
+		req, err := http.NewRequest(method, base+path, body)
 		if err != nil {
 			return nil, &APIError{Status: 0, Message: "could not build request"}
 		}
@@ -155,13 +168,21 @@ func translateHTTPError(resp *http.Response) *APIError {
 	case http.StatusTooManyRequests:
 		return &APIError{Status: resp.StatusCode, Message: "ClickUp rate limit hit (about 100 requests/minute); retry later"}
 	}
+	// v2 errors carry {err, ECODE}; v3 errors carry {message}. Both
+	// are read so either generation of endpoint translates the same.
 	var body struct {
-		Err   string `json:"err"`
-		Ecode string `json:"ECODE"`
+		Err     string `json:"err"`
+		Ecode   string `json:"ECODE"`
+		Message string `json:"message"`
 	}
 	msg := fmt.Sprintf("ClickUp API request failed (HTTP %d)", resp.StatusCode)
-	if err := json.NewDecoder(resp.Body).Decode(&body); err == nil && body.Err != "" {
-		msg = fmt.Sprintf("ClickUp rejected the request: %s (HTTP %d)", body.Err, resp.StatusCode)
+	if err := json.NewDecoder(resp.Body).Decode(&body); err == nil {
+		if body.Err == "" {
+			body.Err = body.Message
+		}
+		if body.Err != "" {
+			msg = fmt.Sprintf("ClickUp rejected the request: %s (HTTP %d)", body.Err, resp.StatusCode)
+		}
 	}
 	return &APIError{Status: resp.StatusCode, Message: msg}
 }

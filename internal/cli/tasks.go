@@ -10,7 +10,7 @@ import (
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
-const tasksHelp = `clickup-axi tasks [id | create "<name>" | edit <id> | comment <id> | close <id>] [flags]
+const tasksHelp = `clickup-axi tasks [id | create "<name>" | edit <id> | comment <id> | move <id> | close <id>] [flags]
 
 Without arguments: open tasks assigned to you in your workspace,
 including subtasks. --assignee lists a teammate's open tasks instead;
@@ -71,6 +71,13 @@ edit <id> (mutations; "edit" is a reserved word, not an id):
 comment <id> ("comment" is a reserved word, not an id):
   --text "<text>"  add a comment to the task
 
+move <id> (change the task's home list; "move" is a reserved word):
+  --list <name|id>     target list (required); a name needs --space
+  --space <name|id>    the space (project) whose list --list names
+  --status "<status>"  the status to land in, only when the target
+                       list lacks the task's current status; the
+                       target's statuses are echoed when one is needed
+
 close <id> (set the list's closed status; "close" is a reserved word):
   --yes  actually close the task; without it the command is a dry run
          that states what would change. Show the user the dry run and
@@ -93,6 +100,8 @@ examples:
   clickup-axi tasks edit HGAI-2316 --parent HGAI-2300
   clickup-axi tasks edit HGAI-2316 --append-body "QA: repro steps ..." --add-tag qa
   clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
+  clickup-axi tasks move HGAI-2316 --list "Sprint 13" --space "Webshop"
+  clickup-axi tasks move HGAI-2316 --list 901234 --status "backlog"
   clickup-axi tasks close HGAI-2316
   clickup-axi tasks close HGAI-2316 --yes`
 
@@ -108,6 +117,8 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 			return cmdTaskEdit(args[1:], c, out)
 		case "comment":
 			return cmdTaskComment(args[1:], c, out)
+		case "move":
+			return cmdTaskMove(args[1:], c, out)
 		case "close":
 			return cmdTaskClose(args[1:], c, out)
 		}

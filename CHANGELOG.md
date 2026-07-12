@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tasks move <id> --list <name|id>` moves a task to another list via
+  ClickUp's v3 move endpoint (one atomic call; memberships in
+  additional lists are untouched and subtasks move with their parent).
+  A list name needs `--space`, a numeric id works alone - the same
+  rule as create. The task keeps its status when the target list has
+  it (statuses match by name); otherwise the move fails with the
+  target's statuses inlined and `--status "<status>"` picks the
+  landing status explicitly - never a silent remap, and a `--status`
+  the move does not need is refused rather than smuggled into a second
+  write. Already-home is a stated no-op; the confirmation carries both
+  list ids so moving back is one command.
 - `tasks close <id>` closes a task by setting the list's closed-type
   status (no need to know its name). As the first destructive op it is
   guarded: without `--yes` it is a dry run stating the exact status
