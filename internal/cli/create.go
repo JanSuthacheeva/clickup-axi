@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+	"github.com/JanSuthacheeva/clickup-axi/internal/config"
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
@@ -143,10 +145,35 @@ func cmdTaskCreate(args []string, c *clickup.Client, out io.Writer) int {
 			"Run `clickup-axi tasks create \"<name>\" --list \"<list|id>\" --body \"<markdown>\"`")
 		return 2
 	}
+	// Without --list or --parent the configured default fills the gap.
+	// Only its presence and shape are checked here - locally decidable,
+	// so a missing or malformed default is a usage error before any API
+	// call; the folder form resolves against the API further down.
+	var defaultList config.Value
+	var haveDefault bool
 	if r.list == "" && r.parent == "" {
-		output.WriteError(out, "tasks create needs --list (the list to create in) or --parent (for a subtask)",
-			"Run `clickup-axi lists --space \"<space>\"` to discover lists, then rerun with --list")
-		return 2
+		cfg, cerr := loadConfig()
+		if cerr != nil {
+			output.WriteError(out, "config could not be read: "+output.CollapseHome(cerr.Error()),
+				"Fix or remove the offending line, or rerun with an explicit --list")
+			return 1
+		}
+		for _, w := range cfg.Warnings {
+			fmt.Fprintln(os.Stderr, "warning: "+output.CollapseHome(w))
+		}
+		v, found := cfg.Get("default_list")
+		if !found {
+			output.WriteError(out, "tasks create needs --list (the list to create in) or --parent (for a subtask)",
+				"Run `clickup-axi lists --space \"<space>\"` to discover lists, then rerun with --list",
+				"Or set a default once: `clickup-axi config set default_list \"<list|id|folder:...>\"`")
+			return 2
+		}
+		if !allDigits(v.Val) && !isFolderIDValue(v.Val) {
+			output.WriteError(out, fmt.Sprintf("default_list %q (%s) is not a list id or folder:<id>", v.Val, sourceLabel(v)),
+				"Run `clickup-axi config set default_list \"<list|id|folder:...>\"` to store a validated value")
+			return 2
+		}
+		defaultList, haveDefault = v, true
 	}
 	// A list name is only unique within one space, and a workspace-wide
 	// scan would be unbounded (AXI: no hidden fan-out) - so a name needs
@@ -182,6 +209,36 @@ func cmdTaskCreate(args []string, c *clickup.Client, out io.Writer) int {
 	}
 	if r.dueSet && relativeDue.MatchString(r.due) {
 		due, _ = parseDue(r.due, c.DateLocation())
+	}
+
+	// The default resolves to a concrete numeric list id here, after
+	// the local usage errors and before any workspace fetch: a folder
+	// default derives its current sprint list now, so the rest of the
+	// create path is identical to an explicit --list <id>.
+	var defaultNote string
+	if haveDefault {
+		defaultNote = " [default_list: " + defaultList.Scope + "]"
+		if allDigits(defaultList.Val) {
+			r.list = defaultList.Val
+		} else {
+			folderID := strings.TrimPrefix(defaultList.Val, "folder:")
+			folder, ferr := c.GetFolder(folderID)
+			if ferr != nil {
+				if ferr.Status == http.StatusNotFound {
+					output.WriteError(out, fmt.Sprintf("default_list points at folder %q (%s), which no longer exists", folderID, sourceLabel(defaultList)),
+						"Run `clickup-axi config set default_list ...` to fix it, or rerun with --list")
+					return 1
+				}
+				return renderAPIError(out, ferr)
+			}
+			cur, ok := folder.CurrentList(time.Now())
+			if !ok {
+				output.WriteError(out, fmt.Sprintf("default_list folder %q (%s) has no lists", folder.Name, sourceLabel(defaultList)),
+					"Run `clickup-axi config set default_list ...` to point it somewhere else, or rerun with --list")
+				return 1
+			}
+			r.list = cur.ID
+		}
 	}
 
 	// The workspace is only fetched when a field actually resolves
@@ -220,6 +277,11 @@ func cmdTaskCreate(args []string, c *clickup.Client, out io.Writer) int {
 		l, err := c.GetList(r.list)
 		if err != nil {
 			if err.Status == http.StatusNotFound {
+				if haveDefault {
+					output.WriteError(out, fmt.Sprintf("default_list points at list %q (%s), which no longer exists", r.list, sourceLabel(defaultList)),
+						"Run `clickup-axi config set default_list ...` to fix it, or rerun with --list")
+					return 1
+				}
 				output.WriteError(out, fmt.Sprintf("list %q not found", r.list),
 					"Run `clickup-axi lists --space \"<space>\"` to discover list ids")
 				return 1
@@ -327,9 +389,9 @@ func cmdTaskCreate(args []string, c *clickup.Client, out io.Writer) int {
 		listID, listName = created.List.ID, created.List.Name
 	}
 	if listName != "" {
-		fmt.Fprintf(out, "  list: %s (%s)\n", listName, listID)
+		fmt.Fprintf(out, "  list: %s (%s)%s\n", listName, listID, defaultNote)
 	} else {
-		fmt.Fprintf(out, "  list: %s\n", listID)
+		fmt.Fprintf(out, "  list: %s%s\n", listID, defaultNote)
 	}
 	if parentTask != nil {
 		fmt.Fprintf(out, "  parent: %s\n", displayID(parentTask))
@@ -354,6 +416,13 @@ func listInputMatches(input, id, name string) bool {
 		return input == id
 	}
 	return strings.EqualFold(input, name)
+}
+
+// isFolderIDValue matches the stored folder:<id> default form; folder
+// names are resolved at config set time and never stored.
+func isFolderIDValue(v string) bool {
+	rest, ok := strings.CutPrefix(v, "folder:")
+	return ok && allDigits(rest)
 }
 
 // allDigits mirrors the resolvers' id policy: an all-digit value is an

@@ -30,8 +30,8 @@ func isolateConfig(t *testing.T) string {
 }
 
 func TestAuthLoginStoresValidatedToken(t *testing.T) {
-	tokenPath := isolateConfig(t)
 	f, c := newFakeClickUp(t)
+	tokenPath := isolateConfig(t)
 	f.mux.HandleFunc("GET /api/v2/user", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "pk_fresh" {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -63,8 +63,8 @@ func TestAuthLoginStoresValidatedToken(t *testing.T) {
 }
 
 func TestAuthLoginRejectsInvalidToken(t *testing.T) {
-	tokenPath := isolateConfig(t)
 	f, c := newFakeClickUp(t)
+	tokenPath := isolateConfig(t)
 	f.mux.HandleFunc("GET /api/v2/user", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(`{}`))
@@ -83,8 +83,8 @@ func TestAuthLoginRejectsInvalidToken(t *testing.T) {
 }
 
 func TestAuthLoginEmptyStdinIsUsageError(t *testing.T) {
-	isolateConfig(t)
 	_, c := newFakeClickUp(t)
+	isolateConfig(t)
 
 	out, code := runCLIWithStdin(t, c, "  \n", "auth", "login")
 	if code != 2 {
@@ -102,8 +102,8 @@ func TestAuthLoginEmptyStdinIsUsageError(t *testing.T) {
 // the fix, `auth logout --help` removed the token and `auth login
 // --help` blocked reading a token from stdin.
 func TestAuthSubcommandsHonorHelp(t *testing.T) {
-	tokenPath := isolateConfig(t)
 	_, c := newFakeClickUp(t)
+	tokenPath := isolateConfig(t)
 
 	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err != nil {
 		t.Fatal(err)
@@ -130,8 +130,8 @@ func TestAuthSubcommandsHonorHelp(t *testing.T) {
 // instead of silently dropped - a dropped flag would let the command run
 // with a meaning the agent did not intend.
 func TestAuthSubcommandsRejectUnknownArgs(t *testing.T) {
-	tokenPath := isolateConfig(t)
 	_, c := newFakeClickUp(t)
+	tokenPath := isolateConfig(t)
 
 	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err != nil {
 		t.Fatal(err)
@@ -162,8 +162,8 @@ func TestAuthSubcommandsRejectUnknownArgs(t *testing.T) {
 }
 
 func TestAuthLogoutIsIdempotent(t *testing.T) {
-	tokenPath := isolateConfig(t)
 	_, c := newFakeClickUp(t)
+	tokenPath := isolateConfig(t)
 
 	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err != nil {
 		t.Fatal(err)

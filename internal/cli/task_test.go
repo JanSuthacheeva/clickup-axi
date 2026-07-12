@@ -28,11 +28,18 @@ type fakeClickUp struct {
 
 func newFakeClickUp(t *testing.T) (*fakeClickUp, *clickup.Client) {
 	t.Helper()
-	// Isolate the custom-id and workspace policies from the host
-	// environment; tests that want forced mode or a pinned workspace
-	// set the variables after calling this.
+	// Isolate the custom-id, workspace, and default-list policies from
+	// the host environment; tests that want forced mode, a pinned
+	// workspace, or a default list set the variables after calling
+	// this. HOME and the working directory are relocated too, so a
+	// developer's personal or project config file can never leak into
+	// exact-output assertions.
 	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "")
 	t.Setenv(clickup.WorkspaceEnv, "")
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", "")
+	t.Chdir(t.TempDir())
 	f := &fakeClickUp{mux: http.NewServeMux()}
 	srv := httptest.NewServer(f.mux)
 	t.Cleanup(srv.Close)
