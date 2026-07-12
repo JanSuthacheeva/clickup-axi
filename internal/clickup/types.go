@@ -88,6 +88,7 @@ type Task struct {
 	// Status.Type is ClickUp's status class (open / custom / done /
 	// closed); "closed" marks the terminal status close targets.
 	Status struct {
+		ID     string `json:"id"`
 		Status string `json:"status"`
 		Type   string `json:"type"`
 	} `json:"status"`
@@ -123,6 +124,7 @@ type List struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	Statuses []struct {
+		ID     string `json:"id"`
 		Status string `json:"status"`
 		Type   string `json:"type"`
 	} `json:"statuses"`
