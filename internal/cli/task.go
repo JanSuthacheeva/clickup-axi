@@ -15,6 +15,10 @@ import (
 const (
 	descriptionLimit = 800
 	commentLimit     = 200
+	// subtaskLimit caps the direct-subtask rows a detail view renders
+	// without --full, keeping a task with an unusually large brood from
+	// dumping every child (AXI truncation convention).
+	subtaskLimit = 50
 )
 
 func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
@@ -82,9 +86,21 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 		return renderUnknownFields(out, unknown, fmt.Sprintf("Run `clickup-axi tasks %s --fields url`", id))
 	}
 
-	t, err := c.GetTaskByID(id)
+	t, err := c.GetTaskWithSubtasksByID(id)
 	if err != nil {
 		return renderAPIError(out, err)
+	}
+	var parent *clickup.Task
+	if t.Parent != "" {
+		// Parent is an internal id even in custom-id-only workspaces. Fetch
+		// it directly so the relationship can still render the workspace's
+		// preferred custom id, title, and current status. A failure here
+		// (parent deleted, moved out of the token's scope, or a transient
+		// error) must not discard the successfully loaded task, so degrade
+		// to a note in renderTask instead of aborting the whole view.
+		if p, perr := c.GetTaskByInternalID(t.Parent); perr == nil {
+			parent = p
+		}
 	}
 
 	var comments []clickup.Comment
@@ -97,7 +113,7 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 
-	renderTask(out, t, comments, showComments, full, extra)
+	renderTask(out, t, parent, comments, showComments, full, extra)
 	return 0
 }
 
@@ -111,7 +127,7 @@ func displayID(t *clickup.Task) string {
 	return t.ID
 }
 
-func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, showComments int, full bool, extra []taskField) {
+func renderTask(out io.Writer, t, parent *clickup.Task, comments []clickup.Comment, showComments int, full bool, extra []taskField) {
 	fmt.Fprintln(out, "task:")
 	fmt.Fprintf(out, "  id: %s\n", displayID(t))
 	fmt.Fprintf(out, "  title: %s\n", t.Name)
@@ -137,8 +153,46 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 			fmt.Fprintf(out, "  %s: %s\n", f.name, v)
 		}
 	}
-
 	var help []string
+	if parent != nil {
+		fmt.Fprintln(out, "  parent:")
+		fmt.Fprintf(out, "    id: %s\n", displayID(parent))
+		fmt.Fprintf(out, "    title: %s\n", parent.Name)
+		fmt.Fprintf(out, "    status: %s\n", parent.Status.Status)
+	} else if t.Parent != "" {
+		// The task is a subtask but its parent could not be loaded. Note the
+		// relationship truthfully rather than hiding it; withhold the bare
+		// internal id under forced custom-id mode so it never leaks.
+		if clickup.CustomIDsForced() {
+			fmt.Fprintln(out, "  parent: could not be loaded")
+		} else {
+			fmt.Fprintf(out, "  parent: %s (could not be loaded)\n", t.Parent)
+		}
+	}
+	direct := make([]clickup.Task, 0, len(t.Subtasks))
+	for _, child := range t.Subtasks {
+		if child.Parent == t.ID {
+			direct = append(direct, child)
+		}
+	}
+	if len(direct) == 0 {
+		fmt.Fprintln(out, "  subtasks: 0 direct subtasks")
+	} else {
+		shown := direct
+		if !full && len(shown) > subtaskLimit {
+			shown = shown[:subtaskLimit]
+		}
+		fmt.Fprintf(out, "  subtasks[%d]{id,title,status}:\n", len(shown))
+		for i := range shown {
+			child := &shown[i]
+			fmt.Fprintf(out, "    %s,%s,%s\n", output.ToonCell(displayID(child)), output.ToonCell(child.Name), output.ToonCell(child.Status.Status))
+		}
+		if len(shown) < len(direct) {
+			fmt.Fprintf(out, "    ... (%d of %d shown)\n", len(shown), len(direct))
+			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all %d direct subtasks", displayID(t), len(direct)))
+		}
+	}
+
 	description := taskDescription(t)
 	if description != "" {
 		shown := description

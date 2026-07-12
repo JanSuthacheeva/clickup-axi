@@ -13,7 +13,8 @@ next-step hints on its list, error, and mutation output. It covers the
 flows agents need most:
 listing open tasks (yours or a teammate's, paged past 100 with
 --page, extra columns with --fields), finding a task by words in
-its title or description, viewing one task with its comments, creating
+its title or description, viewing one task with its parent, direct subtasks,
+and comments, creating
 a task or subtask with its fields set in one call, editing
 its status, assignees, priority, due date, name, description, tags, or parent,
 commenting on it, and discovering the spaces and Lists to target.
@@ -45,7 +46,7 @@ clickup-axi                          # who am I + workspaces
 clickup-axi tasks                    # your open tasks
 clickup-axi tasks --assignee ting    # a teammate's open tasks (names resolve)
 clickup-axi tasks --fields assignees,priority   # extra columns, no extra API calls
-clickup-axi tasks HGAI-2316          # one task with newest comments
+clickup-axi tasks HGAI-2316          # task, parent, direct subtasks, newest comments
 clickup-axi search "oauth redirect"  # find your tasks by title/description text
 clickup-axi spaces                   # active projects in the workspace
 clickup-axi lists --space "Webshop"  # Lists in a project, with folder context
@@ -71,6 +72,9 @@ clickup-axi tasks close HGAI-2316 --yes     # sets the List's closed status
 `tasks edit --parent <task-id>` can make a task a subtask or change
 its parent within the same List. ClickUp's API cannot clear a parent,
 so promoting a subtask to a standalone task must be done in ClickUp.
+`tasks <id>` shows the immediate parent when present and a compact table
+of direct subtasks, so agents can navigate the hierarchy without a
+separate list query.
 
 `tasks move` changes a task's home List (sprint rollover, backlog
 grooming). The task keeps its status when the target List has it;

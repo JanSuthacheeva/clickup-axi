@@ -35,10 +35,10 @@ var surface = []command{
 	},
 	{
 		usage:   "tasks <id>",
-		summary: "Show one task with its newest comments",
+		summary: "Show one task, its relationships, and newest comments",
 		note:    "(internal id like 86ey3tx8m or custom like HGAI-2316)",
 		skill:   "clickup-axi tasks <id>",
-		comment: "one task: metadata, description, newest comments",
+		comment: "one task: metadata, parent, direct subtasks, description, newest comments",
 	},
 	{
 		skill:   "clickup-axi tasks <id> --full",

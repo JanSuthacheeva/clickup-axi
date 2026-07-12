@@ -221,6 +221,193 @@ func TestTaskViewIncludesComments(t *testing.T) {
 	}
 }
 
+func TestTaskViewShowsParentAndDirectSubtasks(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	related := strings.Replace(taskJSON, `"name": "Fix login redirect",`, `"parent": "parent1",
+	"subtasks": [
+		{"id": "child1", "parent": "abc123", "name": "QA, mobile", "status": {"status": "to do"}},
+		{"id": "grandchild1", "parent": "child1", "name": "Nested", "status": {"status": "open"}},
+		{"id": "child2", "parent": "abc123", "name": "Deploy", "status": {"status": "done"}}
+	],
+	"name": "Fix login redirect",`, 1)
+	f.task(t, "abc123", related)
+	f.task(t, "parent1", `{
+		"id": "parent1",
+		"custom_id": "AIKK-1",
+		"name": "Login epic",
+		"status": {"status": "planning"}
+	}`)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	want := `task:
+  id: abc123
+  title: Fix login redirect
+  status: in progress
+  list: Sprint 14 (901234)
+  assignees: jan
+  priority: high
+  due: 2026-07-06
+  parent:
+    id: parent1
+    title: Login epic
+    status: planning
+  subtasks[2]{id,title,status}:
+    child1,"QA, mobile",to do
+    child2,Deploy,done
+  description: After OAuth callback the user lands on a 404.
+comments: 0 comments on this task
+`
+	if out != want {
+		t.Errorf("task relationship output drifted\ngot:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+func TestTaskViewStatesWhenThereAreNoSubtasks(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "  subtasks: 0 direct subtasks\n") {
+		t.Errorf("output missing definitive empty subtask state\noutput:\n%s", out)
+	}
+}
+
+func TestTaskViewRelationshipsHonorForcedCustomIDs(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
+	f.me(t, 42, "jan")
+	related := strings.Replace(taskJSON, `"name": "Fix login redirect",`, `"parent": "parent1",
+	"subtasks": [
+		{"id": "child1", "custom_id": "AIKK-100", "parent": "abc123", "name": "Child", "status": {"status": "open"}}
+	],
+	"name": "Fix login redirect",`, 1)
+	f.task(t, "AIKK-99", related)
+	f.task(t, "parent1", `{
+		"id": "parent1",
+		"custom_id": "AIKK-1",
+		"name": "Login epic",
+		"status": {"status": "planning"}
+	}`)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "AIKK-99")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{"    id: AIKK-1\n", "    AIKK-100,Child,open\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing custom relationship id %q\noutput:\n%s", want, out)
+		}
+	}
+	for _, leaked := range []string{"    id: parent1\n", "    child1,Child,open\n"} {
+		if strings.Contains(out, leaked) {
+			t.Errorf("output leaked internal relationship id %q\noutput:\n%s", leaked, out)
+		}
+	}
+}
+
+func TestTaskViewDegradesWhenParentCannotBeLoaded(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	related := strings.Replace(taskJSON, `"name": "Fix login redirect",`, `"parent": "gone1",
+	"name": "Fix login redirect",`, 1)
+	f.task(t, "abc123", related)
+	f.mux.HandleFunc("GET /api/v2/task/gone1", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"err": "Task not found", "ECODE": "TASK_001"}`))
+	})
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "  parent: gone1 (could not be loaded)\n") {
+		t.Errorf("output missing degraded parent note\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "title: Fix login redirect") {
+		t.Errorf("primary task discarded by parent-fetch failure\noutput:\n%s", out)
+	}
+}
+
+func TestTaskViewParentFailureHidesInternalIDUnderForcedCustomIDs(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	t.Setenv("CLICKUP_AXI_CUSTOM_IDS", "1")
+	f.me(t, 42, "jan")
+	related := strings.Replace(taskJSON, `"name": "Fix login redirect",`, `"parent": "gone1",
+	"name": "Fix login redirect",`, 1)
+	f.task(t, "AIKK-99", related)
+	f.mux.HandleFunc("GET /api/v2/task/gone1", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"err": "Task not found", "ECODE": "TASK_001"}`))
+	})
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "AIKK-99")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "  parent: could not be loaded\n") {
+		t.Errorf("output missing degraded parent note\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "gone1") {
+		t.Errorf("output leaked internal parent id under forced custom ids\noutput:\n%s", out)
+	}
+}
+
+func TestTaskViewCapsManyDirectSubtasks(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	var children strings.Builder
+	for i := 0; i < subtaskLimit+5; i++ {
+		if i > 0 {
+			children.WriteString(",\n")
+		}
+		fmt.Fprintf(&children, `{"id": "child%d", "parent": "abc123", "name": "Sub %d", "status": {"status": "to do"}}`, i, i)
+	}
+	related := strings.Replace(taskJSON, `"name": "Fix login redirect",`,
+		`"subtasks": [`+children.String()+`],
+	"name": "Fix login redirect",`, 1)
+	f.task(t, "abc123", related)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	total := subtaskLimit + 5
+	wantHeader := fmt.Sprintf("  subtasks[%d]{id,title,status}:\n", subtaskLimit)
+	if !strings.Contains(out, wantHeader) {
+		t.Errorf("subtask list not capped to %d rows\noutput:\n%s", subtaskLimit, out)
+	}
+	wantNote := fmt.Sprintf("    ... (%d of %d shown)\n", subtaskLimit, total)
+	if !strings.Contains(out, wantNote) {
+		t.Errorf("output missing truncation note\noutput:\n%s", out)
+	}
+	wantHelp := fmt.Sprintf("Run `clickup-axi tasks abc123 --full` for all %d direct subtasks", total)
+	if !strings.Contains(out, wantHelp) {
+		t.Errorf("output missing --full escape hint\noutput:\n%s", out)
+	}
+
+	fullOut, code := runCLI(t, c, "tasks", "abc123", "--full")
+	if code != 0 {
+		t.Fatalf("--full exit code = %d, want 0\noutput:\n%s", code, fullOut)
+	}
+	wantFullHeader := fmt.Sprintf("  subtasks[%d]{id,title,status}:\n", total)
+	if !strings.Contains(fullOut, wantFullHeader) {
+		t.Errorf("--full did not render every direct subtask\noutput:\n%s", fullOut)
+	}
+	if strings.Contains(fullOut, "shown)") {
+		t.Errorf("--full still truncated the subtask list\noutput:\n%s", fullOut)
+	}
+}
+
 func TestTaskViewFieldsURLOptsBackIn(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", taskJSON)

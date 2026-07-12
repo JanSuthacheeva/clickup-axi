@@ -2,7 +2,8 @@
 name: clickup-axi
 description: >
   Manage ClickUp tasks via the clickup-axi CLI - list tasks assigned to
-  the user, view a task with its comments and description by id, create
+  the user, view a task with its parent, direct subtasks, comments, and
+  description by id, create
   a task or subtask in a List, change a task's status, assignees,
   priority, due date, name, description, or tags, add a comment to a
   task, move a task to another List, or discover a ClickUp space or
@@ -72,7 +73,7 @@ clickup-axi                                                                     
 clickup-axi tasks                                                                  # open tasks assigned to the user
 clickup-axi tasks --assignee "<who>" --space "<space>"                             # a teammate's open tasks; names resolve case-insensitively
 clickup-axi tasks --fields assignees,priority                                      # extra columns on tasks and search listings: assignees, priority, tags, list, url
-clickup-axi tasks <id>                                                             # one task: metadata, description, newest comments
+clickup-axi tasks <id>                                                             # one task: metadata, parent, direct subtasks, description, newest comments
 clickup-axi tasks <id> --full                                                      # complete description and all fetched comments; --fields url adds the task URL
 clickup-axi search "<query>"                                                       # find YOUR tasks by words in the title or description
 clickup-axi spaces                                                                 # active spaces (projects) available in the workspace
@@ -123,6 +124,10 @@ ClickUp. Every invalid field is reported together with the others
 before anything is written - fix them all and retry once. Re-applying
 the current state (same status, same assignees, existing tag) is a
 stated no-op.
+
+`tasks <id>` includes the immediate parent's id, title, and status when
+the task is a subtask, plus a compact table of its direct subtasks. Nested
+descendants are left to their own detail views.
 
 `tasks create "<name>" --list "<list>"` makes a new task. A list name
 needs `--space "<project>"` because list names are only unique within
