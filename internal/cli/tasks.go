@@ -46,7 +46,7 @@ create "<name>" (make a new task; "create" is a reserved word):
   --assignee <who>       assign on creation (repeatable, comma-separated);
                          who = me | member name | id
   --priority <p>         urgent | high | normal | low | none (= unset)
-  --due <date>           due date (YYYY-MM-DD)
+  --due <date>           due date (YYYY-MM-DD or +3days/-1week)
   --body "<markdown>"    description
   --parent <id>          create as a subtask; the list comes from the
                          parent, so --list is optional
@@ -60,7 +60,7 @@ edit <id> (mutations; "edit" is a reserved word, not an id):
   --unassign <who>       remove an assignee (repeatable, comma-separated)
   --priority <p>         urgent | high | normal | low | none (= clear)
   --name "<title>"       rename the task
-  --due <date>           set the due date (YYYY-MM-DD) or none (= clear)
+  --due <date>           set due (YYYY-MM-DD or +3days/-1week), or none
   --body "<markdown>"    replace the description
   --append-body "<md>"   append to the description instead
   --add-tag <tag>        add an existing space tag (repeatable, comma-separated)

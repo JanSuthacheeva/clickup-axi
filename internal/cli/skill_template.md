@@ -78,7 +78,9 @@ echoed inline - pick one and retry once.
 `--assignee <who>` adds and `--unassign <who>` removes people (both
 repeatable and comma-separated; `<who>` is `me`, a member name, or an
 id), `--priority urgent|high|normal|low|none` (none clears),
-`--due YYYY-MM-DD` or `--due none`, `--name "<title>"`, and
+`--due YYYY-MM-DD`, `--due +3days`, `--due -1week`, or `--due none`
+(offsets resolve from today in the ClickUp workspace timezone),
+`--name "<title>"`, and
 `--body "<markdown>"` replaces the description while
 `--append-body "<markdown>"` adds below it (prefer append when the
 existing description should survive). `--add-tag`/`--remove-tag` take
@@ -93,7 +95,8 @@ needs `--space "<project>"` because list names are only unique within
 one space; a numeric list id works alone (discover ids with `lists`).
 The edit field flags also work at creation (`--status`, `--assignee`,
 `--priority`, `--due`, `--body`, `--tag` - validated together the same
-way), and `--parent <task id>` creates a subtask in the parent's list
+way); create due dates accept the same absolute and signed-offset forms.
+`--parent <task id>` creates a subtask in the parent's list
 with no `--list` needed. The confirmation echoes the created id, list,
 status, and url - use that id for follow-ups.
 
@@ -111,6 +114,9 @@ inlined, so pick one and retry once. Time references like "two months
 ago" are fuzzy - use a generous `--updated-after`/`--updated-before`
 window or only one end, and remember tasks from past work are often in
 the final closed status (`--include-closed`).
+`--updated-after` and `--updated-before` accept either `YYYY-MM-DD` or
+signed day/week offsets such as `-1week`, resolved from today in the
+ClickUp workspace timezone.
 
 `spaces` lists the active projects in the selected workspace. Use
 `lists --space "<name|id>"` to discover the Lists in one project before

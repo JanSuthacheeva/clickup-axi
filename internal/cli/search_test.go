@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 )
@@ -305,8 +306,8 @@ func TestSearchSpaceAmbiguousNameListsCandidates(t *testing.T) {
 func TestSearchPushesDownDateWindow(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
-	wantGt, _ := parseSearchDate("2026-05-01")
-	wantLt, _ := parseSearchDate("2026-06-01")
+	wantGt, _ := parseSearchDate("2026-05-01", time.UTC)
+	wantLt, _ := parseSearchDate("2026-06-01", time.UTC)
 	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		if got := q.Get("date_updated_gt"); got != strconv.FormatInt(wantGt, 10) {
@@ -327,13 +328,37 @@ func TestSearchPushesDownDateWindow(t *testing.T) {
 	}
 }
 
+func TestSearchPushesDownRelativeDateInWorkspaceTimezone(t *testing.T) {
+	saved := timeNow
+	timeNow = func() time.Time { return time.Date(2026, 7, 11, 20, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { timeNow = saved })
+
+	f, c := newFakeClickUp(t)
+	f.meInTimezone(t, 42, "jan", "Asia/Bangkok")
+	want := time.Date(2026, 7, 5, 0, 0, 0, 0, time.UTC).UnixMilli()
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("date_updated_gt"); got != strconv.FormatInt(want, 10) {
+			t.Errorf("date_updated_gt = %q, want %d", got, want)
+		}
+		w.Write([]byte(searchCorpus))
+	})
+
+	out, code := runCLI(t, c, "search", "deploy", "--updated-after", "-1week")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "updated>=-1week") {
+		t.Errorf("scope line missing relative date window\noutput:\n%s", out)
+	}
+}
+
 func TestSearchRejectsMalformedDate(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "search", "deploy", "--updated-after", "05/01/2026")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "needs a date as YYYY-MM-DD") {
+	if !strings.Contains(out, "needs a date as YYYY-MM-DD or a relative +3days / -1week") {
 		t.Errorf("output missing date-format error\noutput:\n%s", out)
 	}
 }

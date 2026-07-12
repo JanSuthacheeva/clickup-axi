@@ -176,6 +176,7 @@ type TaskQuery struct {
 // extra request: the endpoint's own last_page flag is honored when
 // present, otherwise a short page is the signal.
 func (c *Client) GetTeamTasksPage(teamID string, q TaskQuery) (tasks []Task, lastPage bool, err *APIError) {
+	c.DateLocation()
 	v := url.Values{}
 	for _, a := range q.Assignees {
 		v.Add("assignees[]", strconv.FormatInt(a, 10))

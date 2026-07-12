@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -271,8 +272,10 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			r.nameSet = true
 		case "--due":
 			i++
-			if i >= len(args) || strings.HasPrefix(args[i], "-") {
-				output.WriteError(out, "--due needs a value", "Run `clickup-axi tasks edit <id> --due <YYYY-MM-DD|none>`")
+			// A leading dash normally means a mistyped flag, but a
+			// relative offset (-1week) legitimately starts with one.
+			if i >= len(args) || (strings.HasPrefix(args[i], "-") && !relativeDue.MatchString(args[i])) {
+				output.WriteError(out, "--due needs a value", "Run `clickup-axi tasks edit <id> --due <YYYY-MM-DD|+3days|none>`")
 				return 2
 			}
 			r.due = args[i]
@@ -376,14 +379,21 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	}
 	var due *int64
 	if r.dueSet {
-		if d, ok := parseDue(r.due); ok {
+		// UTC is sufficient for the local grammar gate. Relative values
+		// are resolved against the workspace only after every locally
+		// decidable field has passed.
+		if d, ok := parseDue(r.due, time.UTC); ok {
 			due = &d
 		} else {
-			usageErrs = append(usageErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01) or none to clear", r.due))
+			usageErrs = append(usageErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01), a relative +3days / -1week, or none to clear", r.due))
 		}
 	}
 	if len(usageErrs) > 0 {
 		return renderFieldErrors(out, r.id, usageErrs, 2)
+	}
+	if r.dueSet && relativeDue.MatchString(r.due) {
+		d, _ := parseDue(r.due, c.DateLocation())
+		due = &d
 	}
 
 	t, err := c.GetTaskByID(r.id)
@@ -800,15 +810,48 @@ func currentPriority(t *clickup.Task) string {
 	return t.Priority.Priority
 }
 
+// timeNow is the clock relative date values resolve against; tests
+// override it to keep asserted outputs deterministic.
+var timeNow = time.Now
+
+// relativeDue matches signed day/week offsets: +3d, +3days, -1week.
+// Four digits cap the offset at ~27 years, keeping epoch math safe.
+var relativeDue = regexp.MustCompile(`(?i)^([+-])(\d{1,4})(d|days?|w|weeks?)$`)
+
+// relativeDays returns the day offset a relative date value encodes,
+// and whether the value is relative at all. The grammar is decidable
+// locally, so malformed values stay pre-flight usage errors; resolving
+// the offset against the workspace timezone happens after that gate.
+func relativeDays(s string) (int, bool) {
+	m := relativeDue.FindStringSubmatch(s)
+	if m == nil {
+		return 0, false
+	}
+	n, _ := strconv.Atoi(m[2]) // 1-4 digits cannot fail
+	if m[1] == "-" {
+		n = -n
+	}
+	if m[3][0] == 'w' || m[3][0] == 'W' {
+		n *= 7
+	}
+	return n, true
+}
+
 // parseDue turns --due input into a millisecond epoch: "none" clears
-// (0), otherwise the date is anchored at 12:00 UTC. ClickUp re-derives
-// the calendar date in the workspace's timezone and stores it at 04:00
-// local (verified against the real API), so noon keeps the date stable
-// for every offset from UTC-11 to UTC+12 - midnight would land on the
-// previous day west of Greenwich.
-func parseDue(s string) (int64, bool) {
+// (0), a signed offset like +3days resolves against today's date in
+// loc (the workspace timezone, time.Local when unknown), otherwise the
+// value must be YYYY-MM-DD. Every result is anchored at 12:00 UTC.
+// ClickUp re-derives the calendar date in the workspace's timezone and
+// stores it at 04:00 local (verified against the real API), so noon
+// keeps the date stable for every offset from UTC-11 to UTC+12 -
+// midnight would land on the previous day west of Greenwich.
+func parseDue(s string, loc *time.Location) (int64, bool) {
 	if strings.EqualFold(s, "none") {
 		return 0, true
+	}
+	if n, ok := relativeDays(s); ok {
+		y, mo, d := timeNow().In(loc).Date()
+		return time.Date(y, mo, d, 12, 0, 0, 0, time.UTC).AddDate(0, 0, n).UnixMilli(), true
 	}
 	d, err := time.Parse("2006-01-02", s)
 	if err != nil {
@@ -823,7 +866,7 @@ func dueLabel(ms int64) string {
 	if ms == 0 {
 		return ""
 	}
-	return time.UnixMilli(ms).Local().Format("2006-01-02")
+	return time.UnixMilli(ms).In(clickup.WorkspaceDateLocation()).Format("2006-01-02")
 }
 
 // orNone renders an absent value ("") as the word agents pass to clear

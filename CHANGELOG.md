@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--remove` uninstalls, touching nothing but clickup-axi's own
   entries. In a terminal the scope is prompted; on agent paths it must
   be explicit.
+- `--due` (on `tasks create` and `tasks edit`) and the `search`
+  `--updated-after`/`--updated-before` bounds accept signed day/week
+  offsets (`+3days`, `-1week`) alongside `YYYY-MM-DD`. Offsets resolve
+  from today in the ClickUp workspace timezone, and due/updated dates
+  now render in that timezone too rather than the host's local zone -
+  the workspace zone is resolved once per client and cached on disk for
+  24 hours (no extra API call on ordinary commands), falling back
+  silently to the local zone when it is unknown.
 - `context`, the hook's payload: a compact dashboard of the user's 5
   most urgent open tasks (due-soonest first, total stated) behind a
   hard 5-second budget. It always exits 0 and degrades to a one-line

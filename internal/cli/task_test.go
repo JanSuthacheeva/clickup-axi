@@ -835,6 +835,108 @@ func TestTaskEditSetsDueDate(t *testing.T) {
 	}
 }
 
+func TestRelativeDaysAndDueParsing(t *testing.T) {
+	saved := timeNow
+	timeNow = func() time.Time { return time.Date(2026, 7, 11, 20, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { timeNow = saved })
+
+	loc, err := time.LoadLocation("Asia/Bangkok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accepted := []struct {
+		input string
+		days  int
+		date  time.Time
+	}{
+		{input: "+3days", days: 3, date: time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)},
+		{input: "+3day", days: 3, date: time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)},
+		{input: "+3d", days: 3, date: time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)},
+		{input: "-1week", days: -7, date: time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)},
+		{input: "-1w", days: -7, date: time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)},
+		{input: "+2WEEKS", days: 14, date: time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)},
+		{input: "+0days", days: 0, date: time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)},
+	}
+	for _, tc := range accepted {
+		t.Run(tc.input, func(t *testing.T) {
+			if got, ok := relativeDays(tc.input); !ok || got != tc.days {
+				t.Errorf("relativeDays(%q) = %d, %v; want %d, true", tc.input, got, ok, tc.days)
+			}
+			if got, ok := parseDue(tc.input, loc); !ok || got != tc.date.UnixMilli() {
+				t.Errorf("parseDue(%q) = %d, %v; want %d, true", tc.input, got, ok, tc.date.UnixMilli())
+			}
+		})
+	}
+
+	for _, input := range []string{"3days", "+3", "+days", "+3months", "+12345d", "tomorrow"} {
+		t.Run("reject_"+input, func(t *testing.T) {
+			if _, ok := relativeDays(input); ok {
+				t.Errorf("relativeDays(%q) accepted invalid input", input)
+			}
+			if _, ok := parseDue(input, loc); ok {
+				t.Errorf("parseDue(%q) accepted invalid input", input)
+			}
+		})
+	}
+}
+
+func TestTaskEditSetsRelativeDueDateInWorkspaceTimezone(t *testing.T) {
+	saved := timeNow
+	timeNow = func() time.Time { return time.Date(2026, 7, 11, 20, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { timeNow = saved })
+
+	for _, tc := range []struct {
+		input string
+		want  time.Time
+	}{
+		{input: "+3days", want: time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)},
+		{input: "-1week", want: time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			f, c := newFakeClickUp(t)
+			f.timezone(t, "Asia/Bangkok")
+			f.task(t, "abc123", editTaskJSON)
+			f.put(t, "abc123", http.StatusOK, `{}`)
+
+			out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", tc.input)
+			if code != 0 {
+				t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+			}
+			wantDate := tc.want.Format("2006-01-02")
+			if want := "task: abc123 due: 2026-07-06 -> " + wantDate; !strings.Contains(out, want) {
+				t.Errorf("output missing %q\noutput:\n%s", want, out)
+			}
+			if len(f.putBodies) != 1 || f.putBodies[0]["due_date"] != float64(tc.want.UnixMilli()) {
+				t.Errorf("PUT bodies = %#v, want due_date %d", f.putBodies, tc.want.UnixMilli())
+			}
+			if f.putBodies[0]["due_date_time"] != false {
+				t.Errorf("PUT body = %#v, want due_date_time false", f.putBodies[0])
+			}
+		})
+	}
+}
+
+func TestTaskEditRelativeDueDateNoOp(t *testing.T) {
+	saved := timeNow
+	timeNow = func() time.Time { return time.Date(2026, 7, 2, 20, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { timeNow = saved })
+
+	f, c := newFakeClickUp(t)
+	f.timezone(t, "Asia/Bangkok")
+	f.task(t, "abc123", editTaskJSON) // workspace today July 3 + 3 days = current July 6
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "+3days")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "no changes (due already 2026-07-06)") {
+		t.Errorf("output missing relative no-op\noutput:\n%s", out)
+	}
+	if len(f.putBodies) != 0 {
+		t.Errorf("PUT called for a relative no-op: %#v", f.putBodies)
+	}
+}
+
 func TestTaskEditClearsDueDate(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.task(t, "abc123", editTaskJSON)
@@ -878,7 +980,7 @@ func TestTaskEditBadDueDateIsUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
 	}
-	if want := "valid: YYYY-MM-DD"; !strings.Contains(out, want) {
+	if want := "valid: YYYY-MM-DD (e.g. 2026-08-01), a relative +3days / -1week, or none to clear"; !strings.Contains(out, want) {
 		t.Errorf("output missing date-format hint\noutput:\n%s", out)
 	}
 }
@@ -1034,14 +1136,14 @@ func TestTaskEditAggregatesPriorityAndDueErrors(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	// No handlers registered: any API call would 404 and surface in output.
 
-	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker", "--due", "tomorrow")
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker", "--due", "+3fortnights")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
 	}
 	if !strings.Contains(out, "2 fields cannot be applied") {
 		t.Errorf("output missing aggregated-failure header\noutput:\n%s", out)
 	}
-	for _, want := range []string{"urgent, high, normal, low, none", "YYYY-MM-DD"} {
+	for _, want := range []string{"urgent, high, normal, low, none", `due "+3fortnights" is not a date`, "a relative +3days / -1week"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("aggregated output missing %q\noutput:\n%s", want, out)
 		}

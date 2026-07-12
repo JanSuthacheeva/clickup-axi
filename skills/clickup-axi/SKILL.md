@@ -78,12 +78,13 @@ clickup-axi spaces                                                       # activ
 clickup-axi lists --space "<space>"                                      # Lists in one space, including folder context; names resolve case-insensitively
 clickup-axi lists --space "<space>" --archived                           # archived Lists in the selected space
 clickup-axi search "<query>" --assignee all --space "<space>"            # widen beyond your tasks; space and assignee resolve by name
+clickup-axi search "<query>" --updated-after -1week                      # date bounds accept YYYY-MM-DD or signed day/week offsets
 clickup-axi tasks create "<name>" --list "<list>" --space "<space>"      # create a task; a list name needs --space, a numeric list id works alone
-clickup-axi tasks create "<name>" --list <id> --assignee me --due <date> # fields combine at creation; --status, --priority, --body "<markdown>", --tag too
+clickup-axi tasks create "<name>" --list <id> --assignee me --due <date> # due: YYYY-MM-DD or +3days/-1week; --status, --priority, --body "<markdown>", --tag too
 clickup-axi tasks create "<name>" --parent <task id>                     # create a subtask; the list comes from the parent, no --list needed
 clickup-axi tasks edit <id> --status "<status>"
 clickup-axi tasks edit <id> --assignee <who> --unassign <who>            # reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id
-clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>" # priority: urgent|high|normal|low|none; due: YYYY-MM-DD or none; fields combine in one call
+clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>" # priority: urgent|high|normal|low|none; due: YYYY-MM-DD, +3days/-1week, or none; fields combine in one call
 clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>   # --body replaces the description, --append-body adds below it; tags must already exist in the space
 clickup-axi tasks comment <id> --text "<text>"
 clickup-axi setup --global                                               # install the session-start dashboard hook (only after user consent)
@@ -98,7 +99,9 @@ echoed inline - pick one and retry once.
 `--assignee <who>` adds and `--unassign <who>` removes people (both
 repeatable and comma-separated; `<who>` is `me`, a member name, or an
 id), `--priority urgent|high|normal|low|none` (none clears),
-`--due YYYY-MM-DD` or `--due none`, `--name "<title>"`, and
+`--due YYYY-MM-DD`, `--due +3days`, `--due -1week`, or `--due none`
+(offsets resolve from today in the ClickUp workspace timezone),
+`--name "<title>"`, and
 `--body "<markdown>"` replaces the description while
 `--append-body "<markdown>"` adds below it (prefer append when the
 existing description should survive). `--add-tag`/`--remove-tag` take
@@ -113,7 +116,8 @@ needs `--space "<project>"` because list names are only unique within
 one space; a numeric list id works alone (discover ids with `lists`).
 The edit field flags also work at creation (`--status`, `--assignee`,
 `--priority`, `--due`, `--body`, `--tag` - validated together the same
-way), and `--parent <task id>` creates a subtask in the parent's list
+way); create due dates accept the same absolute and signed-offset forms.
+`--parent <task id>` creates a subtask in the parent's list
 with no `--list` needed. The confirmation echoes the created id, list,
 status, and url - use that id for follow-ups.
 
@@ -131,6 +135,9 @@ inlined, so pick one and retry once. Time references like "two months
 ago" are fuzzy - use a generous `--updated-after`/`--updated-before`
 window or only one end, and remember tasks from past work are often in
 the final closed status (`--include-closed`).
+`--updated-after` and `--updated-before` accept either `YYYY-MM-DD` or
+signed day/week offsets such as `-1week`, resolved from today in the
+ClickUp workspace timezone.
 
 `spaces` lists the active projects in the selected workspace. Use
 `lists --space "<name|id>"` to discover the Lists in one project before
