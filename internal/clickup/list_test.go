@@ -93,3 +93,71 @@ func TestGetSpaceListsFailureReturnsNoPartialInventory(t *testing.T) {
 		t.Errorf("GetSpaceLists() error = %#v, want translated HTTP 500", err)
 	}
 }
+
+// resolveListFake serves one space's inventory: two folderless lists
+// with a name collision against a folder-contained one, so exactness,
+// substrings, and ambiguity are all exercised on the same data.
+func resolveListFake(t *testing.T) *Client {
+	t.Helper()
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	mux.HandleFunc("GET /api/v2/space/90121/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"lists": [{"id": "11", "name": "Sprint 12"}, {"id": "12", "name": "Backlog"}]}`))
+	})
+	mux.HandleFunc("GET /api/v2/space/90121/folder", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"folders": [{"id": "f1", "name": "Development"}]}`))
+	})
+	mux.HandleFunc("GET /api/v2/folder/f1/list", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"lists": [{"id": "13", "name": "Sprint 12"}]}`))
+	})
+	return New(srv.URL+"/api/v2", "pk_test", srv.Client())
+}
+
+func TestResolveListNumericInputIsUsedDirectly(t *testing.T) {
+	// No server: a numeric input must not trigger any lookup.
+	c := New("http://127.0.0.1:0/api/v2", "pk_test", http.DefaultClient)
+	got, err := c.ResolveList("90121", "901234")
+	if err != nil {
+		t.Fatalf("ResolveList() error = %v", err)
+	}
+	if got.ID != "901234" || got.Name != "" {
+		t.Errorf("ResolveList() = %#v, want bare id 901234", got)
+	}
+}
+
+func TestResolveListUniqueSubstringWins(t *testing.T) {
+	c := resolveListFake(t)
+	got, err := c.ResolveList("90121", "back")
+	if err != nil {
+		t.Fatalf("ResolveList() error = %v", err)
+	}
+	want := ListRef{ID: "12", Name: "Backlog", Folder: FolderlessList}
+	if !reflect.DeepEqual(*got, want) {
+		t.Errorf("ResolveList() = %#v, want %#v", *got, want)
+	}
+}
+
+func TestResolveListAmbiguousNameInlinesCandidatesWithFolders(t *testing.T) {
+	c := resolveListFake(t)
+	_, err := c.ResolveList("90121", "sprint 12")
+	if err == nil {
+		t.Fatal("ResolveList() succeeded, want ambiguity error")
+	}
+	want := `list "sprint 12" is ambiguous: 11 "Sprint 12" (folderless), 13 "Sprint 12" (in Development)`
+	if err.Message != want {
+		t.Errorf("ResolveList() error = %q, want %q", err.Message, want)
+	}
+}
+
+func TestResolveListNoMatchInlinesTheSpacesLists(t *testing.T) {
+	c := resolveListFake(t)
+	_, err := c.ResolveList("90121", "nope")
+	if err == nil {
+		t.Fatal("ResolveList() succeeded, want no-match error")
+	}
+	want := `list "nope" matches none of the space's 3 lists: 11 "Sprint 12" (folderless), 12 "Backlog" (folderless), 13 "Sprint 12" (in Development)`
+	if err.Message != want {
+		t.Errorf("ResolveList() error = %q, want %q", err.Message, want)
+	}
+}
