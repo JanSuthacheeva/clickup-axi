@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shared with the task view, where fields already shown are silently
   absorbed. Unknown names fail before any API call with the vocabulary
   inlined.
+- `tasks --page N` reaches listings beyond the first 100 tasks. A full
+  page states its position, and the next-page hint carries the current
+  filters (and `--fields`) forward.
 - `spaces` lists the active spaces in the selected workspace. `lists
   --space <name|id>` discovers active Lists in one space, including
   folder context to distinguish duplicate names; `--archived` instead
@@ -42,6 +45,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Breaking:** the task view no longer prints `url:` by default -
   agents almost never browse. Opt back in with `--fields url`.
+- Self-contained outputs (task view, counts, confirmations) no longer
+  end with static `help[]` hints; only the `--full` escape hatches for
+  actually-truncated content remain (AXI section 9).
+- Locally decidable bad values (`--priority`, `--due`, `--page`) are
+  usage errors (exit 2) caught before any API call, still aggregated
+  with each other; server-derived validation keeps exit 1.
+
+### Fixed
+
+- `auth logout --help` no longer performs the logout: auth subcommands
+  validate trailing arguments instead of ignoring them.
+- Truncated comment text discloses its total size and offers `--full`,
+  even when the comment count itself was not cut.
+- Network failures print a short translated message instead of Go's
+  raw transport error (full URL, DNS internals).
+- A numeric `--assignee` id is validated against the workspace's
+  members instead of confidently reporting zero tasks for nobody.
 
 ## [0.5.0] - 2026-07-10
 
