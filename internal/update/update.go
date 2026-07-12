@@ -17,6 +17,7 @@ import (
 	"path"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -286,7 +287,7 @@ func (u *Updater) notifyUpdate(out io.Writer) {
 		u.writeCache(tag)
 	}
 	latest := strings.TrimPrefix(tag, "v")
-	if latest == "" || latest == running {
+	if !newer(latest, running) {
 		return
 	}
 	fmt.Fprintf(out, "update: v%s available (running v%s) - run `clickup-axi update`\n", latest, running)
@@ -329,23 +330,108 @@ func (u *Updater) writeCache(tag string) {
 // accepted suffix is deliberately exactly -rc.N, so pseudo-versions
 // (0.0.0-20260712...-abcdef) keep reading as dev builds.
 func isReleaseVersion(s string) bool {
-	base, suffix, ok := strings.Cut(s, "-")
-	if ok {
+	_, ok := parseVersion(s)
+	return ok
+}
+
+// version is a parsed release version - X.Y.Z with an optional -rc.N
+// pre-release. A final release orders after all its release
+// candidates, so rc.N < rc.(N+1) < final is captured by rc==0 meaning
+// "no rc suffix" (final) sorting above any positive rc number.
+type relVer struct {
+	major, minor, patch int
+	rc                  int // 0 = final release; N = -rc.N pre-release
+}
+
+// parseVersion parses X.Y.Z with an optional -rc.N suffix. ok is false
+// for anything else ("dev", pseudo-versions, other pre-release labels),
+// matching what isReleaseVersion accepts.
+func parseVersion(s string) (relVer, bool) {
+	base, suffix, hasSuffix := strings.Cut(s, "-")
+	var v relVer
+	if hasSuffix {
 		rest, isRC := strings.CutPrefix(suffix, "rc.")
 		if !isRC || !allDigits(rest) {
-			return false
+			return relVer{}, false
 		}
+		n, err := strconv.Atoi(rest)
+		if err != nil || n < 1 {
+			return relVer{}, false
+		}
+		v.rc = n
 	}
 	parts := strings.Split(base, ".")
 	if len(parts) != 3 {
-		return false
+		return relVer{}, false
 	}
-	for _, p := range parts {
+	for i, p := range parts {
 		if !allDigits(p) {
-			return false
+			return relVer{}, false
+		}
+		n, err := strconv.Atoi(p)
+		if err != nil {
+			return relVer{}, false
+		}
+		switch i {
+		case 0:
+			v.major = n
+		case 1:
+			v.minor = n
+		case 2:
+			v.patch = n
 		}
 	}
-	return true
+	return v, true
+}
+
+// newer reports whether the latest tag strictly supersedes the running
+// version. It only fires on a real upgrade, so an RC build (published
+// as a GitHub prerelease) is never nagged to "update" to an older
+// stable release that /releases/latest resolves to. Unparseable
+// versions never trigger a notice.
+func newer(latest, running string) bool {
+	lv, ok := parseVersion(latest)
+	if !ok {
+		return false
+	}
+	rv, ok := parseVersion(running)
+	if !ok {
+		return false
+	}
+	return compareVersions(lv, rv) > 0
+}
+
+// compareVersions orders two parsed versions: -1 if a < b, 0 if equal,
+// 1 if a > b. A final release (rc == 0) sorts after all its release
+// candidates.
+func compareVersions(a, b relVer) int {
+	for _, d := range []int{a.major - b.major, a.minor - b.minor, a.patch - b.patch} {
+		if d != 0 {
+			return sign(d)
+		}
+	}
+	if a.rc == b.rc {
+		return 0
+	}
+	// rc == 0 (final) is the highest; otherwise the larger rc wins.
+	if a.rc == 0 {
+		return 1
+	}
+	if b.rc == 0 {
+		return -1
+	}
+	return sign(a.rc - b.rc)
+}
+
+func sign(n int) int {
+	switch {
+	case n < 0:
+		return -1
+	case n > 0:
+		return 1
+	default:
+		return 0
+	}
 }
 
 // allDigits reports whether s is non-empty and numeric only.
