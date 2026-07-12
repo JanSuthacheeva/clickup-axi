@@ -5,9 +5,12 @@ package clickup
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strconv"
 	"time"
@@ -90,7 +93,7 @@ func (c *Client) send(method, path string, body io.Reader) (*http.Response, *API
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := c.http.Do(req)
 		if err != nil {
-			return nil, &APIError{Status: 0, Message: "could not reach the ClickUp API: " + err.Error()}
+			return nil, &APIError{Status: 0, Message: translateTransportError(err)}
 		}
 		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 && body == nil {
 			delay := 2 * time.Second
@@ -109,6 +112,28 @@ func (c *Client) send(method, path string, body io.Reader) (*http.Response, *API
 		}
 		return resp, nil
 	}
+}
+
+// translateTransportError names the failure class without echoing the
+// raw error, which carries the full request URL and dial internals
+// that must never reach agent-facing output. Timeouts are the one
+// class worth distinguishing: the agent's right move is a plain retry,
+// while everything else points at connectivity.
+func translateTransportError(err error) string {
+	var dnsErr *net.DNSError
+	switch {
+	case errors.As(err, &dnsErr):
+		return "could not resolve the ClickUp API host; check network access (DNS) and retry"
+	case isTimeout(err):
+		return "the ClickUp API did not respond in time; retry shortly"
+	}
+	return "could not reach the ClickUp API; check network access and retry"
+}
+
+func isTimeout(err error) bool {
+	var netErr net.Error
+	return (errors.As(err, &netErr) && netErr.Timeout()) ||
+		errors.Is(err, context.DeadlineExceeded)
 }
 
 func translateHTTPError(resp *http.Response) *APIError {

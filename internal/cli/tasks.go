@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
@@ -26,11 +27,17 @@ list flags (without an id):
                      names resolve case-insensitively; all needs --space
   --space <name|id>  only tasks in this space (project); names
                      resolve case-insensitively
+  --page N           page of the listing (100 tasks per page; default 1);
+                     a full page hints at the next one
+  --fields <names>   add columns to the listing (comma-separated);
+                     available: assignees, priority, tags, list, url
 
 view flags (with an id):
-  --comments N   comments to include (default 3)
-  --no-comments  skip comments
-  --full         complete description and all fetched comments
+  --comments N     comments to include (default 3)
+  --no-comments    skip comments
+  --full           complete description and all fetched comments
+  --fields <names> add fields the view omits (url); fields already
+                   shown are silently absorbed
 
 edit <id> (mutations; "edit" is a reserved word, not an id):
   --status "<status>"    change status; valid statuses are echoed
@@ -53,6 +60,8 @@ examples:
   clickup-axi tasks
   clickup-axi tasks --assignee ting
   clickup-axi tasks --assignee ting --space "Webshop"
+  clickup-axi tasks --fields assignees,priority
+  clickup-axi tasks --page 2
   clickup-axi tasks HGAI-2316
   clickup-axi tasks 86ey3tx8m --full
   clickup-axi tasks edit HGAI-2316 --status "in review"
@@ -88,15 +97,26 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	assignee := "me"
 	var space string
+	var fieldTokens []string
+	fieldsSet := false
+	page := 1
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--assignee", "--space":
+		case "--assignee", "--space", "--fields":
 			flag := args[i]
 			i++
-			if i >= len(args) {
+			// A flag-shaped next token is a missing value, not a value:
+			// swallowing it would produce a misleading resolver error
+			// about a member or space named like the flag.
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, fmt.Sprintf("%s needs a value", flag),
 					fmt.Sprintf("Run `clickup-axi tasks %s <value>`", flag))
 				return 2
+			}
+			if flag == "--fields" {
+				fieldTokens = append(fieldTokens, splitTokens(args[i])...)
+				fieldsSet = true
+				continue
 			}
 			if flag == "--space" {
 				space = args[i]
@@ -112,6 +132,22 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 			default:
 				assignee = args[i]
 			}
+		case "--page":
+			i++
+			// 1-based for the agent; a bad value is decidable locally,
+			// so it is a usage error caught before any API call.
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
+				output.WriteError(out, "--page needs a positive number",
+					"Run `clickup-axi tasks --page 2` for the second page")
+				return 2
+			}
+			n, err := strconv.Atoi(args[i])
+			if err != nil || n < 1 {
+				output.WriteError(out, fmt.Sprintf("--page needs a positive number (got %q)", args[i]),
+					"Run `clickup-axi tasks --page 2` for the second page")
+				return 2
+			}
+			page = n
 		case "--comments", "--no-comments", "--full":
 			output.WriteError(out, fmt.Sprintf("%s needs a task id", args[i]),
 				fmt.Sprintf("Run `clickup-axi tasks <id> %s`", args[i]))
@@ -121,7 +157,7 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "-") {
-				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks\n  valid: --assignee, --space (listing) or --comments N, --no-comments, --full (with a task id)", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q for tasks\n  valid: --assignee, --space, --page, --fields (listing) or --comments N, --no-comments, --full, --fields (with a task id)", args[i]))
 				return 2
 			}
 			output.WriteError(out, fmt.Sprintf("unexpected argument %q: a task id does not combine with listing flags", args[i]),
@@ -134,6 +170,19 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		output.WriteError(out, "listing all assignees needs --space (a workspace-wide scan is unbounded)",
 			"Run `clickup-axi tasks --assignee all --space \"<name>\"`")
 		return 2
+	}
+
+	// A --fields value that carried no names ("," or blanks) is a
+	// missing value; unknown names are decidable locally - both are
+	// usage errors caught before any API call.
+	if fieldsSet && len(fieldTokens) == 0 {
+		output.WriteError(out, "--fields needs a value",
+			"Run `clickup-axi tasks --fields assignees,priority`")
+		return 2
+	}
+	extra, unknown := resolveTaskFields(fieldTokens, []string{"id", "title", "status", "due"})
+	if len(unknown) > 0 {
+		return renderUnknownFields(out, unknown, "Run `clickup-axi tasks --fields assignees,priority`")
 	}
 
 	team, err := c.SelectTeam()
@@ -171,26 +220,70 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		spaceSuffix = " in space " + spaceLabel
 	}
 
-	tasks, _, err := c.GetTeamTasksPage(team.ID, q)
+	// The flag is 1-based for the agent; the endpoint pages from 0.
+	q.Page = page - 1
+
+	tasks, lastPage, err := c.GetTeamTasksPage(team.ID, q)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
+
+	// base reconstructs the current invocation so paging hints carry
+	// the filters forward and the next call is copy-paste.
+	base := "clickup-axi tasks"
+	if assignee != "me" {
+		base += fmt.Sprintf(" --assignee %q", assignee)
+	}
+	if space != "" {
+		base += fmt.Sprintf(" --space %q", space)
+	}
+	if len(extra) > 0 {
+		base += " --fields " + fieldNamesOf(extra)
+	}
+
 	if len(tasks) == 0 {
+		if page > 1 {
+			// Beyond the end: the zero is definitive, and the way back
+			// to real results is one hint away.
+			fmt.Fprintf(out, "tasks: 0 open tasks %s%s on page %d\n", scope, where, page)
+			output.WriteHelp(out, fmt.Sprintf("Run `%s` for the first page", base))
+			return 0
+		}
 		fmt.Fprintf(out, "tasks: 0 open tasks %s%s\n", scope, where)
 		return 0
 	}
 
+	// The page qualifier appears only when it carries information: a
+	// single-page listing (the common case) stays unqualified.
 	suffix := ""
-	if len(tasks) == clickup.TeamTasksPageSize {
-		suffix = " (first page; more may exist)"
+	if !lastPage {
+		suffix = fmt.Sprintf(" (page %d; more may exist)", page)
+	} else if page > 1 {
+		suffix = fmt.Sprintf(" (page %d; last page)", page)
 	}
-	fmt.Fprintf(out, "tasks: %d open task%s %s%s%s\n", len(tasks), pluralS(len(tasks)), scope, spaceSuffix, suffix)
-	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
+	// The summary key must differ from the array key below: duplicate
+	// keys at one level are invalid strict TOON (and `count:` matches
+	// the AXI aggregate example).
+	fmt.Fprintf(out, "count: %d open task%s %s%s%s\n", len(tasks), pluralS(len(tasks)), scope, spaceSuffix, suffix)
+	fmt.Fprintf(out, "tasks[%d]{%s}:\n", len(tasks), fieldsHeader("id,title,status,due", extra))
 	for i := range tasks {
 		t := &tasks[i]
-		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date())
+		fmt.Fprintf(out, "  %s,%s,%s,%s%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date(), fieldsCells(t, extra))
 	}
-	output.WriteHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
+	help := []string{"Run `clickup-axi tasks <id>` for details and comments"}
+	if !lastPage {
+		// A truncated listing must be escapable (AXI section 3): paging
+		// is the guaranteed route, narrowing the cheaper one.
+		help = append(help, fmt.Sprintf("Run `%s --page %d` for the next page", base, page+1))
+		if space == "" {
+			cmd := "clickup-axi tasks --space \"<name>\""
+			if assignee != "me" {
+				cmd = fmt.Sprintf("clickup-axi tasks --assignee %q --space \"<name>\"", assignee)
+			}
+			help = append(help, fmt.Sprintf("Run `%s` to narrow the listing to one project", cmd))
+		}
+	}
+	output.WriteHelp(out, help...)
 	return 0
 }
 

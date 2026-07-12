@@ -42,9 +42,25 @@ func cmdAuth(args []string, c *clickup.Client, stdin io.Reader, out io.Writer) i
 		return 0
 	}
 	switch args[0] {
-	case "login":
-		return cmdAuthLogin(stdin, c, out)
-	case "logout":
+	case "login", "logout":
+		// Trailing args are validated before dispatch: --help must never
+		// reach the subcommand's action (a help request triggering a
+		// logout would be a mutation), and anything else is rejected
+		// loudly rather than silently dropped.
+		for _, a := range args[1:] {
+			switch a {
+			case "--help", "-h":
+				fmt.Fprintln(out, authHelp)
+				return 0
+			default:
+				output.WriteError(out, fmt.Sprintf("unknown argument %q for auth %s\n  valid: none (--help only)", a, args[0]),
+					fmt.Sprintf("Run `clickup-axi auth %s` with no flags", args[0]))
+				return 2
+			}
+		}
+		if args[0] == "login" {
+			return cmdAuthLogin(stdin, c, out)
+		}
 		return cmdAuthLogout(out)
 	default:
 		output.WriteError(out, fmt.Sprintf("unknown auth subcommand %q\n  valid: login, logout", args[0]),

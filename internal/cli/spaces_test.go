@@ -19,11 +19,14 @@ func TestSpacesRendersSortedInventory(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	want := "spaces: 3 active spaces in workspace 9018 \"Buzzwoo\"\n" +
+	// The summary key differs from the array key (strict TOON forbids
+	// duplicates at one level), and numeric-look string ids are quoted
+	// so a TOON parser keeps them strings.
+	want := "count: 3 active spaces in workspace 9018 \"Buzzwoo\"\n" +
 		"spaces[3]{id,name}:\n" +
-		"  10,Alpha\n" +
-		"  20,alpha\n" +
-		"  30,Zoo\n" +
+		"  \"10\",Alpha\n" +
+		"  \"20\",alpha\n" +
+		"  \"30\",Zoo\n" +
 		"help[1]: Run `clickup-axi lists --space \"<name|id>\"` to list a space's lists\n"
 	if out != want {
 		t.Errorf("spaces output =\n%s\nwant:\n%s", out, want)
@@ -79,12 +82,12 @@ func TestListsRendersActiveFolderlessAndFolderListsInOrder(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	want := "lists: 4 active lists in space 90121 \"Webshop\"\n" +
+	want := "count: 4 active lists in space 90121 \"Webshop\"\n" +
 		"lists[4]{id,name,folder}:\n" +
-		"  10,alpha,(folderless)\n" +
-		"  30,Zoo,(folderless)\n" +
-		"  21,Next,A Folder\n" +
-		"  22,Backlog,B Folder\n" +
+		"  \"10\",alpha,(folderless)\n" +
+		"  \"30\",Zoo,(folderless)\n" +
+		"  \"21\",Next,A Folder\n" +
+		"  \"22\",Backlog,B Folder\n" +
 		"help[1]: Run `clickup-axi lists --space \"<name|id>\" --archived` to see archived lists\n"
 	if out != want {
 		t.Errorf("lists output =\n%s\nwant:\n%s", out, want)
@@ -139,11 +142,11 @@ func TestListsArchivedTraversesBothFolderStatesAndDeduplicates(t *testing.T) {
 	if folderListCalls["f1"] != 1 || folderListCalls["f2"] != 1 {
 		t.Errorf("folder list traversal = %#v, want each unique folder once", folderListCalls)
 	}
-	want := "lists: 3 archived lists in space 90121\n" +
+	want := "count: 3 archived lists in space 90121\n" +
 		"lists[3]{id,name,folder}:\n" +
-		"  11,Old Inbox,(folderless)\n" +
-		"  12,Current archived,Current\n" +
-		"  13,Old archived,Old\n" +
+		"  \"11\",Old Inbox,(folderless)\n" +
+		"  \"12\",Current archived,Current\n" +
+		"  \"13\",Old archived,Old\n" +
 		"help[1]: Run `clickup-axi lists --space \"<name|id>\"` to see active lists\n"
 	if out != want {
 		t.Errorf("lists output =\n%s\nwant:\n%s", out, want)

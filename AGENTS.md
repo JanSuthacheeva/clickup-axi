@@ -12,13 +12,20 @@ first. Every command must keep the contract:
 
 - stdout carries structured data AND errors; stderr is diagnostics only
 - exit codes: 0 = success (including idempotent no-ops), 1 = error,
-  2 = usage error (unknown flags rejected with valid ones listed inline)
+  2 = usage error; anything decidable locally (unknown flags, malformed
+  values like a bad date or priority) is a usage error caught before any
+  API call, while server-derived validation (unknown member, status,
+  tag) exits 1 - both kinds aggregate all bad fields into one report
 - zero results are stated explicitly ("tasks: 0 open tasks...")
 - long text is truncated with a total-size hint and a `--full` escape
   hatch suggested only when actually truncated
-- every output ends with parameterized `help[]` next-step hints
-- no interactive prompts on agent paths (the only exception: `auth login`
-  prompts when stdin is a real terminal)
+- list, error, and mutation outputs end with parameterized `help[]`
+  next-step hints; self-contained outputs (detail views, counts,
+  confirmations) omit them per AXI section 9, keeping only hints that
+  reveal truncated content (`--full`)
+- no interactive prompts on agent paths (the only exceptions: `auth login`
+  and the `setup` scope prompt, both only when stdin is a real terminal;
+  agent paths get a flags-only usage error instead)
 - raw ClickUp API errors never leak; translate them
 
 The agent skill (`skills/clickup-axi/SKILL.md`) is generated - never
@@ -125,6 +132,14 @@ instead).
   requires at least one bounding filter. `tasks` (the list form) shares
   `--assignee`/`--space` with the same resolvers, and its
   `--assignee all` requires `--space` as the bound.
+- `tasks`, `search`, and the task detail view share the additive
+  `--fields` vocabulary (`internal/cli/fields.go`: assignees, priority,
+  tags, list, url). Columns render from the response already fetched,
+  unknown names aggregate into one exit-2 usage error before any API
+  call, and names already in the schema are silent no-ops. The detail
+  view omits `url:` unless `--fields url` asks for it. `spaces`/`lists`
+  have no `--fields`: their schemas already show every field the
+  adapter carries.
 - After a task is fetched, follow-up API calls use the internal id from
   the response.
 - Rate limit is roughly 100 requests/minute; the client retries a GET

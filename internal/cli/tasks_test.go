@@ -47,7 +47,7 @@ func TestTasksListsOpenAssignedTasks(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
 	for _, want := range []string{
-		"tasks: 2 open tasks assigned to jan",
+		"count: 2 open tasks assigned to jan",
 		"tasks[2]{id,title,status,due}:",
 		`86ey1,"Fix login, redirect",in progress,2026-07-06`,
 		"86ey2,QA checkout,to do,",
@@ -59,6 +59,115 @@ func TestTasksListsOpenAssignedTasks(t *testing.T) {
 	}
 	if strings.Contains(out, "more may exist") {
 		t.Errorf("partial-page note shown for a short page\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "(page") {
+		t.Errorf("page qualifier shown on a single-page listing\noutput:\n%s", out)
+	}
+}
+
+// fieldedTasksJSON carries every --fields column so listing tests can
+// prove rendering of populated and absent values in one page.
+const fieldedTasksJSON = `{"tasks": [
+	{"id": "86ey1", "name": "Fix login, redirect", "status": {"status": "in progress"}, "due_date": "1783339200000",
+	 "assignees": [{"id": 1, "username": "jan"}, {"id": 2, "username": "ting"}],
+	 "priority": {"priority": "high"},
+	 "tags": [{"name": "api"}, {"name": "bug"}],
+	 "list": {"id": "901207", "name": "Sprint 12"},
+	 "url": "https://app.clickup.com/t/86ey1"},
+	{"id": "86ey2", "name": "QA checkout", "status": {"status": "to do"}, "due_date": null}
+]}`
+
+func TestTasksFieldsAddColumns(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fieldedTasksJSON))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--fields", "assignees,priority,tags,list,url")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"tasks[2]{id,title,status,due,assignees,priority,tags,list,url}:",
+		`86ey1,"Fix login, redirect",in progress,2026-07-06,"jan, ting",high,"api, bug",Sprint 12 (901207),https://app.clickup.com/t/86ey1`,
+		"86ey2,QA checkout,to do,,,,,,",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+// Extra columns follow the request order, aliases land on the column
+// (--assignee the flag, assignees the field), and a name the schema
+// already carries is silently absorbed - never duplicated, never an
+// error, like re-applying a task's current state in an edit.
+func TestTasksFieldsAliasOrderAndDedupe(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(fieldedTasksJSON))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--fields", "url,due", "--fields", "Assignee,URL")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "tasks[2]{id,title,status,due,url,assignees}:") {
+		t.Errorf("header must keep request order, apply aliases, and dedupe\noutput:\n%s", out)
+	}
+}
+
+// Unknown field names are decidable locally: one aggregated usage error
+// (exit 2) with the vocabulary inlined, before any API call (no
+// handlers are registered, so any call would surface loudly).
+func TestTasksFieldsUnknownNamesAggregate(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "--fields", "bogus,assignee,size")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`"bogus"`,
+		`"size"`,
+		"valid: assignees, priority, tags, list, url",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, `"assignee"`) {
+		t.Errorf("the valid alias must not be reported as unknown\noutput:\n%s", out)
+	}
+}
+
+// A --fields value that carries no names ("," or spaces) is a missing
+// value, same as no value at all.
+func TestTasksFieldsEmptyValueIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "--fields", ",")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "--fields needs a value") {
+		t.Errorf("output missing needs-a-value error\noutput:\n%s", out)
+	}
+}
+
+func TestTasksFieldsCarriedInPagingHint(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.fullPage(t, "9018", clickup.TeamTasksPageSize, "false", nil)
+
+	out, code := runCLI(t, c, "tasks", "--fields", "priority,url")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "Run `clickup-axi tasks --fields priority,url --page 2` for the next page"; !strings.Contains(out, want) {
+		t.Errorf("next-page hint must carry --fields forward\nwant %q\noutput:\n%s", want, out)
 	}
 }
 
@@ -78,23 +187,141 @@ func TestTasksEmptyStateIsExplicit(t *testing.T) {
 	}
 }
 
+// fullPage registers the team tasks endpoint with pageSize rows and an
+// optional last_page field, capturing each request's page param.
+func (f *fakeClickUp) fullPage(t *testing.T, teamID string, n int, lastPage string, gotPage *string) {
+	t.Helper()
+	f.mux.HandleFunc("GET /api/v2/team/"+teamID+"/task", func(w http.ResponseWriter, r *http.Request) {
+		if gotPage != nil {
+			*gotPage = r.URL.Query().Get("page")
+		}
+		var rows []string
+		for i := 0; i < n; i++ {
+			rows = append(rows, fmt.Sprintf(`{"id": "t%d", "name": "task %d", "status": {"status": "open"}, "due_date": null}`, i, i))
+		}
+		body := fmt.Sprintf(`{"tasks": [%s]}`, strings.Join(rows, ","))
+		if lastPage != "" {
+			body = fmt.Sprintf(`{"tasks": [%s], "last_page": %s}`, strings.Join(rows, ","), lastPage)
+		}
+		w.Write([]byte(body))
+	})
+}
+
 func TestTasksFullPageHintsAtMore(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
-	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
-		var rows []string
-		for i := 0; i < clickup.TeamTasksPageSize; i++ {
-			rows = append(rows, fmt.Sprintf(`{"id": "t%d", "name": "task %d", "status": {"status": "open"}, "due_date": null}`, i, i))
-		}
-		fmt.Fprintf(w, `{"tasks": [%s]}`, strings.Join(rows, ","))
-	})
+	f.fullPage(t, "9018", clickup.TeamTasksPageSize, "", nil)
 
 	out, code := runCLI(t, c, "tasks")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "(first page; more may exist)") {
-		t.Errorf("full page must state that more may exist\noutput:\n%s", out)
+	if !strings.Contains(out, "(page 1; more may exist)") {
+		t.Errorf("full page must state its page and that more may exist\noutput:\n%s", out)
+	}
+	// A truncated listing must be escapable (AXI section 3): paging is
+	// the guaranteed route, narrowing to a space the cheaper one.
+	if !strings.Contains(out, "Run `clickup-axi tasks --page 2` for the next page") {
+		t.Errorf("full page must hint at the next page\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "Run `clickup-axi tasks --space \"<name>\"` to narrow the listing to one project") {
+		t.Errorf("full page must hint at narrowing with --space\noutput:\n%s", out)
+	}
+}
+
+func TestTasksPageFlagRequestsThatPage(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	var gotPage string
+	f.fullPage(t, "9018", clickup.TeamTasksPageSize, "false", &gotPage)
+
+	out, code := runCLI(t, c, "tasks", "--page", "2")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	// The flag is 1-based for the agent; the API pages from 0.
+	if gotPage != "1" {
+		t.Errorf("API page param = %q, want %q (1-based flag maps to 0-based API)", gotPage, "1")
+	}
+	if !strings.Contains(out, "(page 2; more may exist)") {
+		t.Errorf("output missing the page qualifier\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "Run `clickup-axi tasks --page 3` for the next page") {
+		t.Errorf("output missing the next-page hint\noutput:\n%s", out)
+	}
+}
+
+func TestTasksLastPageBeyondFirstStatesIt(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.fullPage(t, "9018", 37, "true", nil)
+
+	out, code := runCLI(t, c, "tasks", "--page", "3")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "(page 3; last page)") {
+		t.Errorf("a later last page must state its position\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "--page 4") {
+		t.Errorf("last page must not hint at a next page\noutput:\n%s", out)
+	}
+}
+
+func TestTasksPageHintCarriesFilters(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+	f.spaces(t, "9018", twoSpacesJSON)
+	f.fullPage(t, "9018", clickup.TeamTasksPageSize, "false", nil)
+
+	out, code := runCLI(t, c, "tasks", "--assignee", "ting", "--space", "Webshop")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if want := "Run `clickup-axi tasks --assignee \"ting\" --space \"Webshop\" --page 2` for the next page"; !strings.Contains(out, want) {
+		t.Errorf("next-page hint must carry the filters forward\nwant %q\noutput:\n%s", want, out)
+	}
+	// --space was given, so the narrowing hint would be noise.
+	if strings.Contains(out, "to narrow the listing") {
+		t.Errorf("narrowing hint shown despite --space\noutput:\n%s", out)
+	}
+}
+
+func TestTasksEmptyPageBeyondEndIsDefinitive(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": [], "last_page": true}`))
+	})
+
+	out, code := runCLI(t, c, "tasks", "--page", "9")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0 (an empty page is an answer)\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "tasks: 0 open tasks assigned to jan in Buzzwoo on page 9") {
+		t.Errorf("output missing the definitive empty page state\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "Run `clickup-axi tasks` for the first page") {
+		t.Errorf("output missing the way back to the first page\noutput:\n%s", out)
+	}
+}
+
+// A bad --page value is decidable locally: usage error, exit 2, no API
+// call (no handlers are registered, so any call would surface loudly).
+func TestTasksPageFlagValidation(t *testing.T) {
+	for _, bad := range [][]string{
+		{"tasks", "--page", "x"},
+		{"tasks", "--page", "0"},
+		{"tasks", "--page"},
+	} {
+		_, c := newFakeClickUp(t)
+		out, code := runCLI(t, c, bad...)
+		if code != 2 {
+			t.Errorf("%v: exit code = %d, want 2\noutput:\n%s", bad, code, out)
+		}
+		if !strings.Contains(out, "--page needs a positive number") {
+			t.Errorf("%v: output missing the validation error\noutput:\n%s", bad, out)
+		}
 	}
 }
 
@@ -128,7 +355,7 @@ func TestTasksSpaceByNameFiltersTheListing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, `tasks: 2 open tasks assigned to jan in space 90121 "Webshop"`) {
+	if !strings.Contains(out, `count: 2 open tasks assigned to jan in space 90121 "Webshop"`) {
 		t.Errorf("header missing the space label\noutput:\n%s", out)
 	}
 }
@@ -198,7 +425,7 @@ func TestTasksAssigneeAllWithSpaceListsEveryone(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, `tasks: 2 open tasks for any assignee in space 90121 "Webshop"`) {
+	if !strings.Contains(out, `count: 2 open tasks for any assignee in space 90121 "Webshop"`) {
 		t.Errorf("header missing the any-assignee scope\noutput:\n%s", out)
 	}
 }
@@ -226,7 +453,7 @@ func TestTasksAssigneeByNameListsTheirTasks(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
 	for _, want := range []string{
-		"tasks: 1 open task assigned to Ting Nguyen",
+		"count: 1 open task assigned to Ting Nguyen",
 		"tasks[1]{id,title,status,due}:",
 		"86ey9,Translate homepage,in progress,",
 	} {
@@ -236,9 +463,12 @@ func TestTasksAssigneeByNameListsTheirTasks(t *testing.T) {
 	}
 }
 
-func TestTasksAssigneeNumericIDSkipsResolution(t *testing.T) {
+// A numeric --assignee is validated against the workspace's members
+// (they already came along with the team fetch, so this costs no extra
+// request) and labels the output with the resolved username.
+func TestTasksAssigneeNumericIDResolvesToMember(t *testing.T) {
 	f, c := newFakeClickUp(t)
-	f.me(t, 42, "jan")
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
 	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query().Get("assignees[]"); got != "189" {
 			t.Errorf("assignees[] = %q, want %q", got, "189")
@@ -250,8 +480,28 @@ func TestTasksAssigneeNumericIDSkipsResolution(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "tasks: 0 open tasks assigned to 189 in Buzzwoo") {
-		t.Errorf("output missing id-labeled empty state\noutput:\n%s", out)
+	if !strings.Contains(out, "tasks: 0 open tasks assigned to Ting Nguyen in Buzzwoo") {
+		t.Errorf("output missing username-labeled empty state\noutput:\n%s", out)
+	}
+}
+
+// A typoed numeric id must not scope the listing to nobody and report
+// a confident zero: the premise is wrong, so it fails with candidates.
+func TestTasksAssigneeUnknownNumericIDInlinesMembers(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.meWithTeams(t, 42, "jan", membersTeamJSON)
+
+	out, code := runCLI(t, c, "tasks", "--assignee", "999")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		"assignee 999 matches none of the members of Buzzwoo",
+		`189 "Ting Nguyen"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
 	}
 }
 
@@ -314,13 +564,63 @@ func TestTasksListRejectsMixedIDAndFlags(t *testing.T) {
 	}
 }
 
+// A value-taking flag followed by another flag is a missing value, not
+// a value that happens to start with "-": swallowing the next flag
+// produces a misleading resolver error about a member named "--space".
+// Free-text flags (--name, --body, --text) are exempt - their values
+// can legitimately start with a dash.
+func TestValueFlagsRejectFlagShapedValues(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	cases := [][]string{
+		{"tasks", "--assignee", "--space"},
+		{"tasks", "--space", "--assignee", "jan"},
+		{"tasks", "--fields", "--space"},
+		{"tasks", "abc123", "--comments", "--full"},
+		{"tasks", "abc123", "--fields", "--full"},
+		{"search", "oauth", "--status", "--space"},
+		{"search", "oauth", "--fields", "--limit"},
+		{"search", "oauth", "--limit", "--include-closed"},
+		{"tasks", "edit", "abc123", "--priority", "--due"},
+		{"tasks", "edit", "abc123", "--assignee", "--unassign"},
+		{"tasks", "edit", "abc123", "--add-tag", "--remove-tag"},
+		{"setup", "--app", "--global"},
+	}
+	for _, args := range cases {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			out, code := runCLI(t, c, args...)
+			if code != 2 {
+				t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+			}
+			if !strings.Contains(out, "needs a value") {
+				t.Errorf("missing needs-a-value error\noutput:\n%s", out)
+			}
+		})
+	}
+}
+
+// Free-text values keep accepting a leading dash: "-v2" is a plausible
+// title, and "- bullet" a plausible body.
+func TestFreeTextFlagsAcceptDashValues(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--name", "-v2 rollout")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `renamed: "Fix login redirect" -> "-v2 rollout"`) {
+		t.Errorf("dash-leading name not applied\noutput:\n%s", out)
+	}
+}
+
 func TestTasksUnknownFlagIsUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "tasks", "--mine")
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "valid: --assignee, --space (listing) or --comments N, --no-comments, --full (with a task id)") {
+	if !strings.Contains(out, "valid: --assignee, --space, --page, --fields (listing) or --comments N, --no-comments, --full, --fields (with a task id)") {
 		t.Errorf("usage error does not list valid flags inline\noutput:\n%s", out)
 	}
 }
@@ -378,8 +678,12 @@ func TestForcedCustomIDsAreShownEverywhere(t *testing.T) {
 			{"id": "86ey2", "custom_id": null, "name": "No custom id", "status": {"status": "to do"}, "due_date": null}
 		]}`))
 	})
+	// A long description forces truncation so the detail view emits its
+	// one remaining help hint (--full), which must carry the custom id.
+	longTaskJSON := strings.Replace(taskJSON,
+		"After OAuth callback the user lands on a 404.", strings.Repeat("x", 1000), 1)
 	f.mux.HandleFunc("GET /api/v2/task/AIKK-99", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(taskJSON))
+		w.Write([]byte(longTaskJSON))
 	})
 	f.comments(t, "abc123", `{"comments": []}`)
 
@@ -401,7 +705,7 @@ func TestForcedCustomIDsAreShownEverywhere(t *testing.T) {
 	if !strings.Contains(out, "id: AIKK-99") {
 		t.Errorf("detail view must show the custom id\noutput:\n%s", out)
 	}
-	if !strings.Contains(out, "tasks edit AIKK-99 --status") {
+	if !strings.Contains(out, "tasks AIKK-99 --full") {
 		t.Errorf("help hints must reference the custom id\noutput:\n%s", out)
 	}
 	if strings.Contains(out, "id: abc123") {

@@ -21,13 +21,17 @@ var surface = []command{
 	{
 		usage:   "tasks",
 		summary: "List open tasks (yours by default)",
-		note:    "(--assignee <who> for a teammate, --space <name|id> to narrow)",
+		note:    "(--assignee <who> for a teammate, --space to narrow, --page N for more, --fields for extra columns)",
 		skill:   "clickup-axi tasks",
 		comment: "open tasks assigned to the user",
 	},
 	{
 		skill:   `clickup-axi tasks --assignee "<who>" --space "<space>"`,
 		comment: "a teammate's open tasks; names resolve case-insensitively",
+	},
+	{
+		skill:   "clickup-axi tasks --fields assignees,priority",
+		comment: "extra columns on tasks and search listings: assignees, priority, tags, list, url",
 	},
 	{
 		usage:   "tasks <id>",
@@ -38,7 +42,7 @@ var surface = []command{
 	},
 	{
 		skill:   "clickup-axi tasks <id> --full",
-		comment: "complete description and all fetched comments",
+		comment: "complete description and all fetched comments; --fields url adds the task URL",
 	},
 	{
 		usage:   `search "<query>"`,

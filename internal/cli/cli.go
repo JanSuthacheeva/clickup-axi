@@ -130,7 +130,7 @@ func cmdHome(c *clickup.Client, out io.Writer) int {
 	} else {
 		fmt.Fprintf(out, "workspaces[%d]{id,name}:\n", len(teams))
 		for _, t := range teams {
-			fmt.Fprintf(out, "  %s,%s\n", t.ID, output.ToonCell(t.Name))
+			fmt.Fprintf(out, "  %s,%s\n", output.ToonCell(t.ID), output.ToonCell(t.Name))
 		}
 	}
 

@@ -23,9 +23,10 @@ metadata:
 
 # clickup-axi
 
-An agent-ergonomic ClickUp CLI (AXI). Run it directly; every output ends
-with `help[]` next-step suggestions, so follow those rather than
-guessing. `clickup-axi tasks --help` exists as a fallback.
+An agent-ergonomic ClickUp CLI (AXI). Run it directly; list, error, and
+mutation outputs end with `help[]` next-step suggestions, so follow
+those rather than guessing. `clickup-axi tasks --help` exists as a
+fallback.
 
 ## Install
 
@@ -86,6 +87,11 @@ inlined. Every invalid field is reported together with the others
 before anything is written - fix them all and retry once. Re-applying
 the current state (same status, same assignees, existing tag) is a
 stated no-op.
+
+`tasks` and `search` listings show `id,title,status,due` by default;
+`--fields assignees,priority,tags,list,url` adds columns from the same
+response at no extra call. On a task view the URL is opt-in
+(`--fields url`); everything else is already shown.
 
 `tasks` and `search` cover your own tasks by default; `--assignee`
 targets a teammate instead. Before widening with `--assignee all`, ask

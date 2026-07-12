@@ -20,12 +20,22 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 	var id string
 	showComments := 3
 	full := false
+	var fieldTokens []string
+	fieldsSet := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--fields":
+			i++
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
+				output.WriteError(out, "--fields needs a value", "Run `clickup-axi tasks <id> --fields url`")
+				return 2
+			}
+			fieldTokens = append(fieldTokens, splitTokens(args[i])...)
+			fieldsSet = true
 		case "--comments":
 			i++
-			if i >= len(args) {
-				output.WriteError(out, "--comments needs a number", "Run `clickup-axi tasks <id> --comments 5`")
+			if i >= len(args) || strings.HasPrefix(args[i], "--") {
+				output.WriteError(out, "--comments needs a value", "Run `clickup-axi tasks <id> --comments 5`")
 				return 2
 			}
 			n, err := strconv.Atoi(args[i])
@@ -43,7 +53,7 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "--") {
-				output.WriteError(out, fmt.Sprintf("unknown flag %q\n  valid: --comments N, --no-comments, --full", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q\n  valid: --comments N, --no-comments, --full, --fields", args[i]))
 				return 2
 			}
 			if id != "" {
@@ -56,6 +66,19 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 	if id == "" {
 		output.WriteError(out, "a task id is needed", "Run `clickup-axi tasks <id>` (internal like 86ey3tx8m or custom like HGAI-2316)")
 		return 2
+	}
+
+	// The detail view shares the listing vocabulary; everything it
+	// already shows counts as a default, so today only url adds a line
+	// and reused --fields values from a listing are silent no-ops.
+	if fieldsSet && len(fieldTokens) == 0 {
+		output.WriteError(out, "--fields needs a value", "Run `clickup-axi tasks <id> --fields url`")
+		return 2
+	}
+	extra, unknown := resolveTaskFields(fieldTokens,
+		[]string{"id", "title", "status", "list", "assignees", "priority", "due", "tags"})
+	if len(unknown) > 0 {
+		return renderUnknownFields(out, unknown, fmt.Sprintf("Run `clickup-axi tasks %s --fields url`", id))
 	}
 
 	t, err := c.GetTaskByID(id)
@@ -73,7 +96,7 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 
-	renderTask(out, t, comments, showComments, full)
+	renderTask(out, t, comments, showComments, full, extra)
 	return 0
 }
 
@@ -87,7 +110,7 @@ func displayID(t *clickup.Task) string {
 	return t.ID
 }
 
-func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, showComments int, full bool) {
+func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, showComments int, full bool, extra []taskField) {
 	fmt.Fprintln(out, "task:")
 	fmt.Fprintf(out, "  id: %s\n", displayID(t))
 	fmt.Fprintf(out, "  title: %s\n", t.Name)
@@ -103,13 +126,16 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 		fmt.Fprintf(out, "  due: %s\n", d)
 	}
 	if len(t.Tags) > 0 {
-		names := make([]string, len(t.Tags))
-		for i, tg := range t.Tags {
-			names[i] = tg.Name
-		}
-		fmt.Fprintf(out, "  tags: %s\n", strings.Join(names, ", "))
+		fmt.Fprintf(out, "  tags: %s\n", tagNames(t.Tags))
 	}
-	fmt.Fprintf(out, "  url: %s\n", t.URL)
+	// Opt-in fields (--fields): the URL is the only vocabulary entry the
+	// default view omits - agents almost never browse, so it does not
+	// spend its ~15 tokens unless asked for.
+	for _, f := range extra {
+		if v := f.render(t); v != "" {
+			fmt.Fprintf(out, "  %s: %s\n", f.name, v)
+		}
+	}
 
 	var help []string
 	description := taskDescription(t)
@@ -140,28 +166,33 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 		if len(comments) == clickup.CommentsPageSize {
 			total = strconv.Itoa(clickup.CommentsPageSize) + "+"
 		}
-		fmt.Fprintf(out, "comments: showing %d of %s (newest first)\n", len(shown), total)
+		fmt.Fprintf(out, "count: %d of %s comments (newest first)\n", len(shown), total)
 		fmt.Fprintf(out, "comments[%d]{author,date,text}:\n", len(shown))
+		textCut := false
 		for _, cm := range shown {
 			text := cm.Text
 			if !full {
 				var cut bool
 				text, cut = output.TruncateRunes(text, commentLimit)
 				if cut {
-					text += "..."
+					// Like the description, a clipped text states its total
+					// so the agent knows how much --full would add.
+					text += fmt.Sprintf("... (truncated, %d chars total)", len([]rune(cm.Text)))
+					textCut = true
 				}
 			}
 			fmt.Fprintf(out, "  %s,%s,%s\n", output.ToonCell(cm.User.Username), cm.Date.InstantDate(), output.ToonCell(text))
 		}
-		if len(shown) < len(comments) || len(comments) == clickup.CommentsPageSize {
-			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for all fetched comments", displayID(t)))
+		if textCut || len(shown) < len(comments) || len(comments) == clickup.CommentsPageSize {
+			help = append(help, fmt.Sprintf("Run `clickup-axi tasks %s --full` for full comment text and all fetched comments", displayID(t)))
 		}
 	}
 
-	help = append(help,
-		fmt.Sprintf("Run `clickup-axi tasks edit %s --status \"<status>\"` to change status", displayID(t)),
-		fmt.Sprintf("Run `clickup-axi tasks comment %s --text \"<text>\"` to add a comment", displayID(t)))
-	output.WriteHelp(out, help...)
+	// A detail view is self-contained (AXI section 9): the only help
+	// hints it carries are the --full escape hatches for truncated text.
+	if len(help) > 0 {
+		output.WriteHelp(out, help...)
+	}
 }
 
 // editRequest carries the parsed flags of one tasks edit invocation.
@@ -199,7 +230,10 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		switch args[i] {
 		case "--status":
 			i++
-			if i >= len(args) {
+			// Guarded flags reject a flag-shaped next token as a missing
+			// value; only the free-text flags (--name, --body,
+			// --append-body) accept values starting with a dash.
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--status needs a value", "Run `clickup-axi tasks edit <id> --status \"in review\"`")
 				return 2
 			}
@@ -207,21 +241,21 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			r.statusSet = true
 		case "--assignee":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--assignee needs a value", "Run `clickup-axi tasks edit <id> --assignee <who>`")
 				return 2
 			}
 			r.addTokens = append(r.addTokens, splitTokens(args[i])...)
 		case "--unassign":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--unassign needs a value", "Run `clickup-axi tasks edit <id> --unassign <who>`")
 				return 2
 			}
 			r.remTokens = append(r.remTokens, splitTokens(args[i])...)
 		case "--priority":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--priority needs a value", "Run `clickup-axi tasks edit <id> --priority <urgent|high|normal|low|none>`")
 				return 2
 			}
@@ -237,7 +271,7 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			r.nameSet = true
 		case "--due":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--due needs a value", "Run `clickup-axi tasks edit <id> --due <YYYY-MM-DD|none>`")
 				return 2
 			}
@@ -261,14 +295,14 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			r.appendSet = true
 		case "--add-tag":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--add-tag needs a value", "Run `clickup-axi tasks edit <id> --add-tag <tag>`")
 				return 2
 			}
 			r.addTags = append(r.addTags, splitTokens(args[i])...)
 		case "--remove-tag":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--remove-tag needs a value", "Run `clickup-axi tasks edit <id> --remove-tag <tag>`")
 				return 2
 			}
@@ -328,18 +362,43 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		return 2
 	}
 
+	// Locally decidable values are usage errors, validated before any
+	// API call (AXI section 6: exit 2, same class as an unknown flag).
+	// They still aggregate with each other so one retry fixes both.
+	var usageErrs []string
+	var prio *int
+	if r.prioritySet {
+		if p, ok := parsePriority(r.priority); ok {
+			prio = &p
+		} else {
+			usageErrs = append(usageErrs, fmt.Sprintf("priority %q not accepted\n  valid: urgent, high, normal, low, none", r.priority))
+		}
+	}
+	var due *int64
+	if r.dueSet {
+		if d, ok := parseDue(r.due); ok {
+			due = &d
+		} else {
+			usageErrs = append(usageErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01) or none to clear", r.due))
+		}
+	}
+	if len(usageErrs) > 0 {
+		return renderFieldErrors(out, r.id, usageErrs, 2)
+	}
+
 	t, err := c.GetTaskByID(r.id)
 	if err != nil {
 		return renderAPIError(out, err)
 	}
 
-	// Pre-flight validation: every field is checked before anything is
-	// written, so a single bad field is reported alongside the others
-	// (not one at a time) and never leaves a half-applied task. Assignee
-	// names resolve against the workspace; the status is checked against
-	// the list; priority and due date parse locally. Only once all
-	// fields are known-good does the atomic PUT run. When the edit grows
-	// more fields, each adds its check here.
+	// Pre-flight validation of server-derived fields: every field is
+	// checked before anything is written, so a single bad field is
+	// reported alongside the others (not one at a time) and never leaves
+	// a half-applied task. Assignee names resolve against the workspace;
+	// the status is checked against the list; tags against the space.
+	// Only once all fields are known-good does the atomic PUT run. When
+	// the edit grows more fields, each adds its check here (or to the
+	// local usage stage above if it parses without the API).
 	var fieldErrs []string
 
 	var addUsers, remUsers []clickup.User
@@ -367,24 +426,6 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 
-	var prio *int
-	if r.prioritySet {
-		if p, ok := parsePriority(r.priority); ok {
-			prio = &p
-		} else {
-			fieldErrs = append(fieldErrs, fmt.Sprintf("priority %q not accepted\n  valid: urgent, high, normal, low, none", r.priority))
-		}
-	}
-
-	var due *int64
-	if r.dueSet {
-		if d, ok := parseDue(r.due); ok {
-			due = &d
-		} else {
-			fieldErrs = append(fieldErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01) or none to clear", r.due))
-		}
-	}
-
 	// Tags to add must already exist in the space - a typo must not
 	// mint a new tag from an agent path. One GET covers all of them,
 	// and returns each tag's stored casing so the write uses the
@@ -401,7 +442,7 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 	}
 
 	if len(fieldErrs) > 0 {
-		return renderFieldErrors(out, displayID(t), fieldErrs)
+		return renderFieldErrors(out, displayID(t), fieldErrs, 1)
 	}
 
 	// A person named in both lists is a self-contradictory request.
@@ -603,11 +644,13 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 // renderFieldErrors reports every field that failed pre-flight validation
 // in one message, so the agent fixes them all before a single retry. The
 // edit is atomic, so nothing was changed while any field was invalid.
-func renderFieldErrors(out io.Writer, id string, errs []string) int {
+// code distinguishes locally-parseable usage errors (2) from
+// server-derived validation failures (1).
+func renderFieldErrors(out io.Writer, id string, errs []string, code int) int {
 	if len(errs) == 1 {
 		output.WriteError(out, errs[0],
 			fmt.Sprintf("Fix the value above, then rerun `clickup-axi tasks edit %s ...`", id))
-		return 1
+		return code
 	}
 	// Indent each error's continuation lines (e.g. a status "valid:" list)
 	// so they nest under their bullet instead of dedenting to the margin.
@@ -619,7 +662,7 @@ func renderFieldErrors(out io.Writer, id string, errs []string) int {
 		len(items), strings.Join(items, "\n  - "))
 	output.WriteError(out, msg,
 		fmt.Sprintf("Fix all the values above, then rerun `clickup-axi tasks edit %s ...` once", id))
-	return 1
+	return code
 }
 
 // rollbackTags inverts already-applied tag ops (adds are deleted,
@@ -670,14 +713,15 @@ func splitTokens(v string) []string {
 	return tokens
 }
 
-// resolveAssignees resolves each token to a member, collecting every
-// miss/ambiguity (with its inline candidates) so all bad tokens in a
-// field are reported together and one retry can clear them.
+// resolveAssignees resolves each token to a member via resolveAssignee
+// (search.go), collecting every miss/ambiguity (with its inline
+// candidates) so all bad tokens in a field are reported together and
+// one retry can clear them.
 func resolveAssignees(tokens []string, team *clickup.Team, c *clickup.Client) ([]clickup.User, []string) {
 	users := make([]clickup.User, 0, len(tokens))
 	var errs []string
 	for _, tok := range tokens {
-		u, err := resolveEditAssignee(tok, team, c)
+		u, err := resolveAssignee(tok, team, c)
 		if err != nil {
 			errs = append(errs, err.Message)
 			continue
@@ -685,21 +729,6 @@ func resolveAssignees(tokens []string, team *clickup.Team, c *clickup.Client) ([
 		users = append(users, *u)
 	}
 	return users, errs
-}
-
-// resolveEditAssignee resolves one token for a mutation: "me" is the
-// caller, a numeric token is validated against membership (unlike the
-// read-only filter path, which trusts any id), and a name/email goes
-// through ResolveMember. Validating ids keeps a non-existent id from
-// passing pre-flight and printing a false success on a no-op PUT.
-func resolveEditAssignee(token string, team *clickup.Team, c *clickup.Client) (*clickup.User, *clickup.APIError) {
-	if token == "me" {
-		return c.GetUser()
-	}
-	if id, err := strconv.ParseInt(token, 10, 64); err == nil {
-		return team.ResolveMemberID(id)
-	}
-	return team.ResolveMember(token)
 }
 
 // assigneeName prefers the resolved username; a numeric-id input

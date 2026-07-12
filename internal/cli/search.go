@@ -36,6 +36,8 @@ flags:
   --updated-before <date>  updated before YYYY-MM-DD
   --include-closed         include tasks in the final closed status
   --limit N                most results to show (default 10)
+  --fields <names>         add columns to the results (comma-separated);
+                           available: assignees, priority, tags, list, url
 
 examples:
   clickup-axi search "oauth redirect"
@@ -65,13 +67,17 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 		dateUpdatedLt int64
 		includeClosed bool
 		limit         = searchDefaultLimit
+		fieldTokens   []string
+		fieldsSet     bool
 	)
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
-		case "--assignee", "--status", "--space", "--list", "--limit", "--updated-after", "--updated-before":
+		case "--assignee", "--status", "--space", "--list", "--limit", "--updated-after", "--updated-before", "--fields":
 			flag := args[i]
 			i++
-			if i >= len(args) {
+			// A flag-shaped next token is a missing value, not a value
+			// (none of these flags takes free text).
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, fmt.Sprintf("%s needs a value", flag),
 					"Run `clickup-axi search \"<query>\" "+flag+" <value>`")
 				return 2
@@ -113,6 +119,9 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 					return 2
 				}
 				limit = n
+			case "--fields":
+				fieldTokens = append(fieldTokens, splitTokens(val)...)
+				fieldsSet = true
 			}
 		case "--include-closed":
 			includeClosed = true
@@ -121,7 +130,7 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "-") {
-				output.WriteError(out, fmt.Sprintf("unknown flag %q for search\n  valid: --assignee, --status, --space, --list, --updated-after, --updated-before, --include-closed, --limit", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q for search\n  valid: --assignee, --status, --space, --list, --updated-after, --updated-before, --include-closed, --limit, --fields", args[i]))
 				return 2
 			}
 			terms = append(terms, args[i])
@@ -140,6 +149,18 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 		output.WriteError(out, "searching all assignees needs at least one more filter (a workspace-wide scan is unbounded)",
 			"Add --status, --space <id>, --list <id>, or --updated-after/--updated-before")
 		return 2
+	}
+
+	// A --fields value that carried no names is a missing value; unknown
+	// names are decidable locally - both fail before any API call.
+	if fieldsSet && len(fieldTokens) == 0 {
+		output.WriteError(out, "--fields needs a value",
+			"Run `clickup-axi search \"<query>\" --fields assignees,priority`")
+		return 2
+	}
+	extra, unknown := resolveTaskFields(fieldTokens, []string{"id", "title", "status", "match", "due"})
+	if len(unknown) > 0 {
+		return renderUnknownFields(out, unknown, "Run `clickup-axi search \"<query>\" --fields assignees,priority`")
 	}
 
 	team, err := c.SelectTeam()
@@ -214,21 +235,23 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 		scanned:       scanned,
 		complete:      complete,
 	}
-	renderSearch(out, query, matches, sc, limit)
+	renderSearch(out, query, matches, sc, limit, extra)
 	return 0
 }
 
-// resolveAssignee turns the --assignee value into a user: "me"
-// resolves the token's own user, a numeric value is used as an id
-// directly, and anything else is matched against the workspace's
-// members by name (or email). "all" is handled by the caller (no
-// assignee filter) and never reaches here.
+// resolveAssignee turns an assignee value into a member: "me" resolves
+// the token's own user, a numeric value is validated against the
+// workspace's members (they came along with the team fetch, so a typoed
+// id fails with candidates instead of scoping a listing to nobody and
+// reporting a confident zero), and anything else is matched by name or
+// email. Reads and mutations share this resolver; "all" is handled by
+// the list/search callers and never reaches here.
 func resolveAssignee(assignee string, team *clickup.Team, c *clickup.Client) (*clickup.User, *clickup.APIError) {
-	if assignee == "me" {
+	if strings.EqualFold(assignee, "me") {
 		return c.GetUser()
 	}
 	if id, err := strconv.ParseInt(assignee, 10, 64); err == nil {
-		return &clickup.User{ID: id}, nil
+		return team.ResolveMemberID(id)
 	}
 	return team.ResolveMember(assignee)
 }
@@ -396,7 +419,7 @@ func (s searchScope) line() string {
 	return strings.Join(parts, "; ")
 }
 
-func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchScope, limit int) {
+func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchScope, limit int, extra []taskField) {
 	shown := matches
 	if len(shown) > limit {
 		shown = shown[:limit]
@@ -431,11 +454,11 @@ func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchS
 		return
 	}
 
-	fmt.Fprintf(out, "tasks[%d]{id,title,status,match,due}:\n", len(shown))
+	fmt.Fprintf(out, "tasks[%d]{%s}:\n", len(shown), fieldsHeader("id,title,status,match,due", extra))
 	for i := range shown {
 		t := &shown[i].Task
-		fmt.Fprintf(out, "  %s,%s,%s,%s,%s\n",
-			displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), shown[i].Where, t.DueDate.Date())
+		fmt.Fprintf(out, "  %s,%s,%s,%s,%s%s\n",
+			displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), shown[i].Where, t.DueDate.Date(), fieldsCells(t, extra))
 	}
 
 	help := []string{"Run `clickup-axi tasks <id>` for full detail and comments"}

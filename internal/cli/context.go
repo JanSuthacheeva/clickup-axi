@@ -123,12 +123,12 @@ func cmdContext(args []string, c *clickup.Client, out io.Writer) int {
 	}
 	firstHelp := "Run `clickup-axi tasks` for your open tasks"
 	if len(shown) > contextTaskCap {
+		// The header stays a plain row count; the total belongs in the
+		// help hint (AXI: no pagination in TOON array headers).
 		shown = shown[:contextTaskCap]
-		fmt.Fprintf(out, "tasks[%d/%s]{id,title,status,due}:\n", len(shown), total)
 		firstHelp = fmt.Sprintf("Run `clickup-axi tasks` for all %s open tasks", total)
-	} else {
-		fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(shown))
 	}
+	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(shown))
 	for i := range shown {
 		t := &shown[i]
 		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date())

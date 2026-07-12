@@ -81,11 +81,15 @@ func TestUpdateReplacesBinary(t *testing.T) {
 		"update: v0.1.0 -> v9.9.9",
 		"(sha256 verified)",
 		"skill: installed copies refresh on the next command",
-		"Run `clickup-axi --version` to confirm the new version",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\noutput:\n%s", want, out)
 		}
+	}
+	// The success line already states the new version - a confirmation is
+	// self-contained (AXI section 9), so no help[] hint follows it.
+	if strings.Contains(out, "help[") {
+		t.Errorf("update confirmation must not append help hints\noutput:\n%s", out)
 	}
 	got, err := os.ReadFile(exe)
 	if err != nil || string(got) != "new binary" {

@@ -191,12 +191,69 @@ func TestTaskViewIncludesComments(t *testing.T) {
 		"priority: high",
 		"due: 2026-07-06",
 		"description: After OAuth callback the user lands on a 404.",
-		"comments: showing 3 of 3 (newest first)",
+		"count: 3 of 3 comments (newest first)",
 		"comments[3]{author,date,text}:",
 		`mia,2026-07-02,"Repro'd on staging, with Safari"`,
 		"jan,2026-07-01,Suspect the state param",
-		"help[",
 	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	// A detail view is self-contained (AXI section 9): with nothing
+	// truncated, no help[] hints are appended.
+	if strings.Contains(out, "help[") {
+		t.Errorf("self-contained detail view must not append help hints\noutput:\n%s", out)
+	}
+	// The URL is opt-in (--fields url): agents almost never browse, so
+	// the default view does not spend the tokens.
+	if strings.Contains(out, "url:") {
+		t.Errorf("default detail view must not print the url\noutput:\n%s", out)
+	}
+}
+
+func TestTaskViewFieldsURLOptsBackIn(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123", "--fields", "url")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "url: https://app.clickup.com/t/abc123") {
+		t.Errorf("--fields url must print the task URL\noutput:\n%s", out)
+	}
+}
+
+// The detail view shares the listing vocabulary; a field it already
+// shows is a silent no-op, so agents can reuse one --fields value
+// across commands without branching.
+func TestTaskViewFieldsAlreadyShownIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123", "--fields", "assignees,priority")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if n := strings.Count(out, "assignees:"); n != 1 {
+		t.Errorf("assignees printed %d times, want 1\noutput:\n%s", n, out)
+	}
+	if strings.Contains(out, "url:") {
+		t.Errorf("url must stay opt-in\noutput:\n%s", out)
+	}
+}
+
+func TestTaskViewFieldsUnknownNameIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "abc123", "--fields", "checks")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{`"checks"`, "valid: assignees, priority, tags, list, url"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\noutput:\n%s", want, out)
 		}
@@ -222,6 +279,57 @@ func TestTaskViewTruncatesLongDescription(t *testing.T) {
 	}
 	if !strings.Contains(out, "comments: 0 comments on this task") {
 		t.Errorf("output missing definitive empty state for comments\noutput:\n%s", out)
+	}
+}
+
+// Truncated comment text must disclose itself like a truncated
+// description does: total size shown, --full suggested - even when the
+// comment count was not cut (2 of 2 shown, but one text was clipped).
+func TestTaskViewTruncatedCommentTextHintsFull(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	long := strings.Repeat("y", 500)
+	f.comments(t, "abc123", fmt.Sprintf(`{"comments": [
+		{"id": "9", "comment_text": %q, "user": {"id": 2, "username": "mia"}, "date": 1782993600000},
+		{"id": "8", "comment_text": "short", "user": {"id": 1, "username": "jan"}, "date": "1782907200000"}
+	]}`, long))
+
+	out, code := runCLI(t, c, "tasks", "abc123")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "count: 2 of 2 comments (newest first)") {
+		t.Errorf("output missing count line\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "... (truncated, 500 chars total)") {
+		t.Errorf("truncated comment text missing its size hint\noutput:\n%s", out)
+	}
+	if want := "--full` for full comment text"; !strings.Contains(out, want) {
+		t.Errorf("output missing the --full escape hatch %q\noutput:\n%s", want, out)
+	}
+	if n := strings.Count(out, "--full` for full comment text"); n != 1 {
+		t.Errorf("comment --full hint appears %d times, want 1\noutput:\n%s", n, out)
+	}
+}
+
+// --full renders the clipped text completely, with no truncation marker.
+func TestTaskViewFullShowsCompleteCommentText(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	long := strings.Repeat("y", 500)
+	f.comments(t, "abc123", fmt.Sprintf(`{"comments": [
+		{"id": "9", "comment_text": %q, "user": {"id": 2, "username": "mia"}, "date": 1782993600000}
+	]}`, long))
+
+	out, code := runCLI(t, c, "tasks", "abc123", "--full")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, long) {
+		t.Errorf("--full did not render the complete comment text\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "truncated") {
+		t.Errorf("--full output still mentions truncation\noutput:\n%s", out)
 	}
 }
 
@@ -691,19 +799,18 @@ func TestTaskEditSamePriorityIsNoOp(t *testing.T) {
 	}
 }
 
+// A priority name is a static local enum: a bad one is a usage error
+// (exit 2, AXI section 6), caught before any API call.
 func TestTaskEditInvalidPriorityListsValid(t *testing.T) {
-	f, c := newFakeClickUp(t)
-	f.task(t, "abc123", editTaskJSON)
+	_, c := newFakeClickUp(t)
+	// No handlers registered: any API call would 404 and surface in output.
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker")
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
 	}
 	if want := "valid: urgent, high, normal, low, none"; !strings.Contains(out, want) {
 		t.Errorf("output missing %q\noutput:\n%s", want, out)
-	}
-	if len(f.putBodies) != 0 {
-		t.Errorf("PUT called despite invalid priority: %v", f.putRaw)
 	}
 }
 
@@ -760,19 +867,18 @@ func TestTaskEditSameDueIsNoOp(t *testing.T) {
 	}
 }
 
-func TestTaskEditBadDueDateIsFieldError(t *testing.T) {
-	f, c := newFakeClickUp(t)
-	f.task(t, "abc123", editTaskJSON)
+// A due date's format is decidable locally: a bad one is a usage error
+// (exit 2, AXI section 6), caught before any API call.
+func TestTaskEditBadDueDateIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	// No handlers registered: any API call would 404 and surface in output.
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--due", "tomorrow")
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
 	}
 	if want := "valid: YYYY-MM-DD"; !strings.Contains(out, want) {
 		t.Errorf("output missing date-format hint\noutput:\n%s", out)
-	}
-	if len(f.putBodies) != 0 {
-		t.Errorf("PUT called despite invalid due date: %v", f.putRaw)
 	}
 }
 
@@ -921,13 +1027,15 @@ func TestTaskEditEmptyBodyIsUsageError(t *testing.T) {
 	}
 }
 
+// Two locally-invalid values are still reported together, but as one
+// aggregated usage error (exit 2) rather than a runtime error.
 func TestTaskEditAggregatesPriorityAndDueErrors(t *testing.T) {
-	f, c := newFakeClickUp(t)
-	f.task(t, "abc123", editTaskJSON)
+	_, c := newFakeClickUp(t)
+	// No handlers registered: any API call would 404 and surface in output.
 
 	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker", "--due", "tomorrow")
-	if code != 1 {
-		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
 	}
 	if !strings.Contains(out, "2 fields cannot be applied") {
 		t.Errorf("output missing aggregated-failure header\noutput:\n%s", out)
@@ -937,8 +1045,22 @@ func TestTaskEditAggregatesPriorityAndDueErrors(t *testing.T) {
 			t.Errorf("aggregated output missing %q\noutput:\n%s", want, out)
 		}
 	}
-	if len(f.putBodies) != 0 {
-		t.Errorf("no PUT should happen when a field is invalid: %v", f.putRaw)
+}
+
+// A locally-invalid value fails fast (exit 2) even when a server-side
+// field in the same call may also be bad: local syntax is validated
+// before any API call, so the server-derived check never runs.
+func TestTaskEditLocalUsageErrorPrecedesServerValidation(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	// No handlers registered: resolving the assignee would need the API
+	// and fail loudly; exit 2 proves the local check came first.
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--priority", "blocker", "--assignee", "zoe")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2 (usage error)\noutput:\n%s", code, out)
+	}
+	if want := "valid: urgent, high, normal, low, none"; !strings.Contains(out, want) {
+		t.Errorf("output missing %q\noutput:\n%s", want, out)
 	}
 }
 
@@ -1310,7 +1432,7 @@ func TestUnknownFlagExitsWithUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "valid: --comments N, --no-comments, --full") {
+	if !strings.Contains(out, "valid: --comments N, --no-comments, --full, --fields") {
 		t.Errorf("usage error does not list valid flags inline\noutput:\n%s", out)
 	}
 }
