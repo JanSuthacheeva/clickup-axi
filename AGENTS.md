@@ -17,8 +17,9 @@ first. Every command must keep the contract:
 - long text is truncated with a total-size hint and a `--full` escape
   hatch suggested only when actually truncated
 - every output ends with parameterized `help[]` next-step hints
-- no interactive prompts on agent paths (the only exception: `auth login`
-  prompts when stdin is a real terminal)
+- no interactive prompts on agent paths (the only exceptions: `auth login`
+  and the `setup` scope prompt, both only when stdin is a real terminal;
+  agent paths get a flags-only usage error instead)
 - raw ClickUp API errors never leak; translate them
 
 The agent skill (`skills/clickup-axi/SKILL.md`) is generated - never
