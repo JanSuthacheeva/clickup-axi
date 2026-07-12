@@ -5,7 +5,37 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.0-rc.1] - 2026-07-12
+
+### Changed
+
+- The generated agent skill is a third smaller (14.0KB -> 9.4KB, about
+  1,000 tokens): comment alignment padding is gone, near-duplicate
+  command examples are merged, and the prose keeps only the behavioral
+  guidance the command comments cannot carry. No command changed.
+- Two `search` help hints now name the exact flags to rerun with
+  instead of describing the adjustment; listing rows escape the id
+  cell the way subtask rows already did; the session-start dashboard
+  drops its generic `--help` hint (the skill carries the surface).
+- Release candidates (hyphenated tags) publish as GitHub prereleases,
+  so `releases/latest` - the URL installs and self-update resolve -
+  keeps serving the last stable release. RC binaries still show the
+  passive update notice when the final release lands.
+
+### Fixed
+
+- Malformed flag input is rejected before any API call everywhere:
+  the task view names an unknown single-dash flag instead of treating
+  it as a task id, `tasks move` no longer swallows a following flag as
+  the value of `--list`/`--space`/`--status`, and `search --list`
+  refuses a non-numeric list id instead of forwarding it to the API
+  where it would filter to a confident false zero.
+
+### Removed
+
+- The `docs/` folder (v1.0.0 roadmap and design specs): every roadmap
+  item shipped. The two post-1.0 intents moved to issues #23
+  (`tasks archive`) and #24 (benchmark extension).
 
 ### Added
 
@@ -256,7 +286,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release, plus a passive once-per-24h update notice and healing of
   installed skill copies (`CLICKUP_AXI_NO_UPDATE_CHECK=1` disables).
 
-[Unreleased]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.6.0...HEAD
+[1.0.0-rc.1]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.6.0...v1.0.0-rc.1
 [0.6.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.3.0...v0.4.0

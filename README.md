@@ -1,8 +1,8 @@
 # clickup-axi
 
-> [!IMPORTANT]
-> **Still in active development.** Stable to use right now, but the
-> command surface keeps evolving - always update to the newest version
+> [!NOTE]
+> **Approaching 1.0.** The command surface for 1.0 is complete and
+> release candidates are being cut; keep the binary current
 > (`clickup-axi update`, or agree when the update notice appears).
 > Feature requests are very welcome in the
 > [issues](https://github.com/JanSuthacheeva/clickup-axi/issues).
