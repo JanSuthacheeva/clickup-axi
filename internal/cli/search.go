@@ -71,7 +71,9 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 		case "--assignee", "--status", "--space", "--list", "--limit", "--updated-after", "--updated-before":
 			flag := args[i]
 			i++
-			if i >= len(args) {
+			// A flag-shaped next token is a missing value, not a value
+			// (none of these flags takes free text).
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, fmt.Sprintf("%s needs a value", flag),
 					"Run `clickup-axi search \"<query>\" "+flag+" <value>`")
 				return 2

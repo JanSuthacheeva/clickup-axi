@@ -337,6 +337,53 @@ func TestTasksListRejectsMixedIDAndFlags(t *testing.T) {
 	}
 }
 
+// A value-taking flag followed by another flag is a missing value, not
+// a value that happens to start with "-": swallowing the next flag
+// produces a misleading resolver error about a member named "--space".
+// Free-text flags (--name, --body, --text) are exempt - their values
+// can legitimately start with a dash.
+func TestValueFlagsRejectFlagShapedValues(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	cases := [][]string{
+		{"tasks", "--assignee", "--space"},
+		{"tasks", "--space", "--assignee", "jan"},
+		{"tasks", "abc123", "--comments", "--full"},
+		{"search", "oauth", "--status", "--space"},
+		{"search", "oauth", "--limit", "--include-closed"},
+		{"tasks", "edit", "abc123", "--priority", "--due"},
+		{"tasks", "edit", "abc123", "--assignee", "--unassign"},
+		{"tasks", "edit", "abc123", "--add-tag", "--remove-tag"},
+		{"setup", "--app", "--global"},
+	}
+	for _, args := range cases {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			out, code := runCLI(t, c, args...)
+			if code != 2 {
+				t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+			}
+			if !strings.Contains(out, "needs a value") {
+				t.Errorf("missing needs-a-value error\noutput:\n%s", out)
+			}
+		})
+	}
+}
+
+// Free-text values keep accepting a leading dash: "-v2" is a plausible
+// title, and "- bullet" a plausible body.
+func TestFreeTextFlagsAcceptDashValues(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	f.put(t, "abc123", http.StatusOK, `{}`)
+
+	out, code := runCLI(t, c, "tasks", "edit", "abc123", "--name", "-v2 rollout")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `renamed: "Fix login redirect" -> "-v2 rollout"`) {
+		t.Errorf("dash-leading name not applied\noutput:\n%s", out)
+	}
+}
+
 func TestTasksUnknownFlagIsUsageError(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "tasks", "--mine")

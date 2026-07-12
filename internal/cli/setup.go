@@ -56,7 +56,7 @@ func cmdSetup(args []string, stdin io.Reader, out io.Writer) int {
 			remove = true
 		case "--app":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--app needs a value\n  valid: claude-code, codex, opencode",
 					"Run `clickup-axi setup --global --app claude-code`")
 				return 2

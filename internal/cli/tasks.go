@@ -93,7 +93,10 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		case "--assignee", "--space":
 			flag := args[i]
 			i++
-			if i >= len(args) {
+			// A flag-shaped next token is a missing value, not a value:
+			// swallowing it would produce a misleading resolver error
+			// about a member or space named like the flag.
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, fmt.Sprintf("%s needs a value", flag),
 					fmt.Sprintf("Run `clickup-axi tasks %s <value>`", flag))
 				return 2

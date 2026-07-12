@@ -24,8 +24,8 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 		switch args[i] {
 		case "--comments":
 			i++
-			if i >= len(args) {
-				output.WriteError(out, "--comments needs a number", "Run `clickup-axi tasks <id> --comments 5`")
+			if i >= len(args) || strings.HasPrefix(args[i], "--") {
+				output.WriteError(out, "--comments needs a value", "Run `clickup-axi tasks <id> --comments 5`")
 				return 2
 			}
 			n, err := strconv.Atoi(args[i])
@@ -203,7 +203,10 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 		switch args[i] {
 		case "--status":
 			i++
-			if i >= len(args) {
+			// Guarded flags reject a flag-shaped next token as a missing
+			// value; only the free-text flags (--name, --body,
+			// --append-body) accept values starting with a dash.
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--status needs a value", "Run `clickup-axi tasks edit <id> --status \"in review\"`")
 				return 2
 			}
@@ -211,21 +214,21 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			r.statusSet = true
 		case "--assignee":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--assignee needs a value", "Run `clickup-axi tasks edit <id> --assignee <who>`")
 				return 2
 			}
 			r.addTokens = append(r.addTokens, splitTokens(args[i])...)
 		case "--unassign":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--unassign needs a value", "Run `clickup-axi tasks edit <id> --unassign <who>`")
 				return 2
 			}
 			r.remTokens = append(r.remTokens, splitTokens(args[i])...)
 		case "--priority":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--priority needs a value", "Run `clickup-axi tasks edit <id> --priority <urgent|high|normal|low|none>`")
 				return 2
 			}
@@ -241,7 +244,7 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			r.nameSet = true
 		case "--due":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--due needs a value", "Run `clickup-axi tasks edit <id> --due <YYYY-MM-DD|none>`")
 				return 2
 			}
@@ -265,14 +268,14 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 			r.appendSet = true
 		case "--add-tag":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--add-tag needs a value", "Run `clickup-axi tasks edit <id> --add-tag <tag>`")
 				return 2
 			}
 			r.addTags = append(r.addTags, splitTokens(args[i])...)
 		case "--remove-tag":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--remove-tag needs a value", "Run `clickup-axi tasks edit <id> --remove-tag <tag>`")
 				return 2
 			}
