@@ -1,0 +1,4 @@
+commands:
+  lint: "go vet ./..."
+  test: "go test ./..."
+  format: "gofmt -w ."
