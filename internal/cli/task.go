@@ -20,8 +20,18 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 	var id string
 	showComments := 3
 	full := false
+	var fieldTokens []string
+	fieldsSet := false
 	for i := 0; i < len(args); i++ {
 		switch args[i] {
+		case "--fields":
+			i++
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
+				output.WriteError(out, "--fields needs a value", "Run `clickup-axi tasks <id> --fields url`")
+				return 2
+			}
+			fieldTokens = append(fieldTokens, splitTokens(args[i])...)
+			fieldsSet = true
 		case "--comments":
 			i++
 			if i >= len(args) || strings.HasPrefix(args[i], "--") {
@@ -43,7 +53,7 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 			return 0
 		default:
 			if strings.HasPrefix(args[i], "--") {
-				output.WriteError(out, fmt.Sprintf("unknown flag %q\n  valid: --comments N, --no-comments, --full", args[i]))
+				output.WriteError(out, fmt.Sprintf("unknown flag %q\n  valid: --comments N, --no-comments, --full, --fields", args[i]))
 				return 2
 			}
 			if id != "" {
@@ -56,6 +66,19 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 	if id == "" {
 		output.WriteError(out, "a task id is needed", "Run `clickup-axi tasks <id>` (internal like 86ey3tx8m or custom like HGAI-2316)")
 		return 2
+	}
+
+	// The detail view shares the listing vocabulary; everything it
+	// already shows counts as a default, so today only url adds a line
+	// and reused --fields values from a listing are silent no-ops.
+	if fieldsSet && len(fieldTokens) == 0 {
+		output.WriteError(out, "--fields needs a value", "Run `clickup-axi tasks <id> --fields url`")
+		return 2
+	}
+	extra, unknown := resolveTaskFields(fieldTokens,
+		[]string{"id", "title", "status", "list", "assignees", "priority", "due", "tags"})
+	if len(unknown) > 0 {
+		return renderUnknownFields(out, unknown, fmt.Sprintf("Run `clickup-axi tasks %s --fields url`", id))
 	}
 
 	t, err := c.GetTaskByID(id)
@@ -73,7 +96,7 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 
-	renderTask(out, t, comments, showComments, full)
+	renderTask(out, t, comments, showComments, full, extra)
 	return 0
 }
 
@@ -87,7 +110,7 @@ func displayID(t *clickup.Task) string {
 	return t.ID
 }
 
-func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, showComments int, full bool) {
+func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, showComments int, full bool, extra []taskField) {
 	fmt.Fprintln(out, "task:")
 	fmt.Fprintf(out, "  id: %s\n", displayID(t))
 	fmt.Fprintf(out, "  title: %s\n", t.Name)
@@ -103,13 +126,16 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 		fmt.Fprintf(out, "  due: %s\n", d)
 	}
 	if len(t.Tags) > 0 {
-		names := make([]string, len(t.Tags))
-		for i, tg := range t.Tags {
-			names[i] = tg.Name
-		}
-		fmt.Fprintf(out, "  tags: %s\n", strings.Join(names, ", "))
+		fmt.Fprintf(out, "  tags: %s\n", tagNames(t.Tags))
 	}
-	fmt.Fprintf(out, "  url: %s\n", t.URL)
+	// Opt-in fields (--fields): the URL is the only vocabulary entry the
+	// default view omits - agents almost never browse, so it does not
+	// spend its ~15 tokens unless asked for.
+	for _, f := range extra {
+		if v := f.render(t); v != "" {
+			fmt.Fprintf(out, "  %s: %s\n", f.name, v)
+		}
+	}
 
 	var help []string
 	description := taskDescription(t)

@@ -576,6 +576,7 @@ func TestValueFlagsRejectFlagShapedValues(t *testing.T) {
 		{"tasks", "--space", "--assignee", "jan"},
 		{"tasks", "--fields", "--space"},
 		{"tasks", "abc123", "--comments", "--full"},
+		{"tasks", "abc123", "--fields", "--full"},
 		{"search", "oauth", "--status", "--space"},
 		{"search", "oauth", "--fields", "--limit"},
 		{"search", "oauth", "--limit", "--include-closed"},

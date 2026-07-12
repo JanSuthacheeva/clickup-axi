@@ -205,6 +205,59 @@ func TestTaskViewIncludesComments(t *testing.T) {
 	if strings.Contains(out, "help[") {
 		t.Errorf("self-contained detail view must not append help hints\noutput:\n%s", out)
 	}
+	// The URL is opt-in (--fields url): agents almost never browse, so
+	// the default view does not spend the tokens.
+	if strings.Contains(out, "url:") {
+		t.Errorf("default detail view must not print the url\noutput:\n%s", out)
+	}
+}
+
+func TestTaskViewFieldsURLOptsBackIn(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123", "--fields", "url")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "url: https://app.clickup.com/t/abc123") {
+		t.Errorf("--fields url must print the task URL\noutput:\n%s", out)
+	}
+}
+
+// The detail view shares the listing vocabulary; a field it already
+// shows is a silent no-op, so agents can reuse one --fields value
+// across commands without branching.
+func TestTaskViewFieldsAlreadyShownIsNoOp(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", taskJSON)
+	f.comments(t, "abc123", `{"comments": []}`)
+
+	out, code := runCLI(t, c, "tasks", "abc123", "--fields", "assignees,priority")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if n := strings.Count(out, "assignees:"); n != 1 {
+		t.Errorf("assignees printed %d times, want 1\noutput:\n%s", n, out)
+	}
+	if strings.Contains(out, "url:") {
+		t.Errorf("url must stay opt-in\noutput:\n%s", out)
+	}
+}
+
+func TestTaskViewFieldsUnknownNameIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "abc123", "--fields", "checks")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{`"checks"`, "valid: assignees, priority, tags, list, url"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
 }
 
 func TestTaskViewTruncatesLongDescription(t *testing.T) {
@@ -1379,7 +1432,7 @@ func TestUnknownFlagExitsWithUsageError(t *testing.T) {
 	if code != 2 {
 		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "valid: --comments N, --no-comments, --full") {
+	if !strings.Contains(out, "valid: --comments N, --no-comments, --full, --fields") {
 		t.Errorf("usage error does not list valid flags inline\noutput:\n%s", out)
 	}
 }
