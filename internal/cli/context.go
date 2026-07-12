@@ -49,7 +49,7 @@ func cmdContext(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 
-	fmt.Fprintln(out, "clickup-axi: ClickUp CLI (tasks, search, edit, comment)")
+	fmt.Fprintln(out, "clickup-axi: ClickUp CLI (tasks, search, create, edit, comment)")
 
 	type fetched struct {
 		tasks    []clickup.Task

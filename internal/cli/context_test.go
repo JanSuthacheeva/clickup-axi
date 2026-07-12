@@ -9,7 +9,7 @@ import (
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 )
 
-const contextHeader = "clickup-axi: ClickUp CLI (tasks, search, edit, comment)"
+const contextHeader = "clickup-axi: ClickUp CLI (tasks, search, create, edit, comment)"
 
 func TestContextShowsCappedDueSortedDashboard(t *testing.T) {
 	f, c := newFakeClickUp(t)
