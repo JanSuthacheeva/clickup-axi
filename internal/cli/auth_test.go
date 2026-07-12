@@ -98,6 +98,69 @@ func TestAuthLoginEmptyStdinIsUsageError(t *testing.T) {
 	}
 }
 
+// A help request must never trigger the mutation it asks about: before
+// the fix, `auth logout --help` removed the token and `auth login
+// --help` blocked reading a token from stdin.
+func TestAuthSubcommandsHonorHelp(t *testing.T) {
+	tokenPath := isolateConfig(t)
+	_, c := newFakeClickUp(t)
+
+	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tokenPath, []byte("pk_x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, sub := range []string{"login", "logout"} {
+		out, code := runCLI(t, c, "auth", sub, "--help")
+		if code != 0 {
+			t.Fatalf("auth %s --help exit code = %d, want 0\noutput:\n%s", sub, code, out)
+		}
+		if !strings.Contains(out, "clickup-axi auth <subcommand>") {
+			t.Errorf("auth %s --help did not print the auth help\noutput:\n%s", sub, out)
+		}
+	}
+	if _, err := os.Stat(tokenPath); err != nil {
+		t.Errorf("auth logout --help removed the stored token")
+	}
+}
+
+// Unknown trailing args on auth subcommands are rejected loudly (exit 2)
+// instead of silently dropped - a dropped flag would let the command run
+// with a meaning the agent did not intend.
+func TestAuthSubcommandsRejectUnknownArgs(t *testing.T) {
+	tokenPath := isolateConfig(t)
+	_, c := newFakeClickUp(t)
+
+	if err := os.MkdirAll(filepath.Dir(tokenPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tokenPath, []byte("pk_x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tc := range []struct{ sub, arg string }{
+		{"login", "--bogus"},
+		{"logout", "--force"},
+		{"logout", "extra"},
+	} {
+		out, code := runCLI(t, c, "auth", tc.sub, tc.arg)
+		if code != 2 {
+			t.Fatalf("auth %s %s exit code = %d, want 2\noutput:\n%s", tc.sub, tc.arg, code, out)
+		}
+		if !strings.Contains(out, tc.arg) {
+			t.Errorf("error does not name the rejected argument %q\noutput:\n%s", tc.arg, out)
+		}
+		if !strings.Contains(out, "--help") {
+			t.Errorf("error does not state that only --help is valid\noutput:\n%s", out)
+		}
+	}
+	if _, err := os.Stat(tokenPath); err != nil {
+		t.Errorf("a rejected logout argument must not remove the stored token")
+	}
+}
+
 func TestAuthLogoutIsIdempotent(t *testing.T) {
 	tokenPath := isolateConfig(t)
 	_, c := newFakeClickUp(t)
