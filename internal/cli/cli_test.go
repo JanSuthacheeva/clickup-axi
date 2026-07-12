@@ -15,7 +15,7 @@ func TestHomeSingleWorkspaceNeedsNoPin(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "workspaces[1]{id,name}:\n  9018,Buzzwoo\n") {
+	if !strings.Contains(out, "workspaces[1]{id,name}:\n  \"9018\",Buzzwoo\n") {
 		t.Errorf("output missing workspaces table\noutput:\n%s", out)
 	}
 	if strings.Contains(out, "CLICKUP_AXI_WORKSPACE") {

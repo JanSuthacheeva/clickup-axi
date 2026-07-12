@@ -4,21 +4,46 @@
 package output
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"strings"
 )
 
-// ToonCell escapes a value for use in a TOON tabular row. Cells are joined
-// with commas, so values containing commas, quotes, or newlines get quoted.
+// ToonCell escapes a value for use in a TOON tabular row. Cells are
+// joined with commas, so values containing commas, quotes, or newlines
+// get quoted (backslashes escaped first, then quotes, per the TOON
+// string rules). Values a TOON parser would type-coerce - number
+// literals and the exact scalars true/false/null - are quoted too, so
+// a string stays a string.
 func ToonCell(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", " ")
 	s = strings.ReplaceAll(s, "\n", " ")
-	if strings.ContainsAny(s, ",\"") || s != strings.TrimSpace(s) {
+	if strings.ContainsAny(s, ",\"") || s != strings.TrimSpace(s) || looksLikeScalar(s) {
+		s = strings.ReplaceAll(s, `\`, `\\`)
 		return `"` + strings.ReplaceAll(s, `"`, `\"`) + `"`
 	}
 	return s
+}
+
+// looksLikeScalar reports whether an unquoted s would parse as a TOON
+// scalar (JSON number, true, false, null) instead of a string.
+func looksLikeScalar(s string) bool {
+	switch s {
+	case "true", "false", "null":
+		return true
+	}
+	if s == "" {
+		return false
+	}
+	var n json.Number
+	dec := json.NewDecoder(strings.NewReader(s))
+	if dec.Decode(&n) != nil {
+		return false
+	}
+	// The whole value must be the number ("123abc" is a string).
+	return !dec.More() && n.String() == s
 }
 
 // TruncateRunes cuts s to at most n runes, reporting whether it was cut.

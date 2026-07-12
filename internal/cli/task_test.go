@@ -191,7 +191,7 @@ func TestTaskViewIncludesComments(t *testing.T) {
 		"priority: high",
 		"due: 2026-07-06",
 		"description: After OAuth callback the user lands on a 404.",
-		"comments: showing 3 of 3 (newest first)",
+		"count: 3 of 3 comments (newest first)",
 		"comments[3]{author,date,text}:",
 		`mia,2026-07-02,"Repro'd on staging, with Safari"`,
 		"jan,2026-07-01,Suspect the state param",
@@ -241,7 +241,7 @@ func TestTaskViewTruncatedCommentTextHintsFull(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "comments: showing 2 of 2 (newest first)") {
+	if !strings.Contains(out, "count: 2 of 2 comments (newest first)") {
 		t.Errorf("output missing count line\noutput:\n%s", out)
 	}
 	if !strings.Contains(out, "... (truncated, 500 chars total)") {

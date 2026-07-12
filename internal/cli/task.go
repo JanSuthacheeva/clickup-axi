@@ -140,7 +140,7 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 		if len(comments) == clickup.CommentsPageSize {
 			total = strconv.Itoa(clickup.CommentsPageSize) + "+"
 		}
-		fmt.Fprintf(out, "comments: showing %d of %s (newest first)\n", len(shown), total)
+		fmt.Fprintf(out, "count: %d of %s comments (newest first)\n", len(shown), total)
 		fmt.Fprintf(out, "comments[%d]{author,date,text}:\n", len(shown))
 		textCut := false
 		for _, cm := range shown {

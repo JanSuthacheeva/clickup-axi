@@ -184,7 +184,10 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 	if len(tasks) == clickup.TeamTasksPageSize {
 		suffix = " (first page; more may exist)"
 	}
-	fmt.Fprintf(out, "tasks: %d open task%s %s%s%s\n", len(tasks), pluralS(len(tasks)), scope, spaceSuffix, suffix)
+	// The summary key must differ from the array key below: duplicate
+	// keys at one level are invalid strict TOON (and `count:` matches
+	// the AXI aggregate example).
+	fmt.Fprintf(out, "count: %d open task%s %s%s%s\n", len(tasks), pluralS(len(tasks)), scope, spaceSuffix, suffix)
 	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(tasks))
 	for i := range tasks {
 		t := &tasks[i]

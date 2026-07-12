@@ -74,7 +74,7 @@ func cmdSpaces(args []string, c *clickup.Client, out io.Writer) int {
 		output.WriteHelp(out, "Run `clickup-axi tasks` to see your open tasks")
 		return 0
 	}
-	fmt.Fprintf(out, "spaces: %d active space%s in %s\n", len(spaces), pluralS(len(spaces)), workspace)
+	fmt.Fprintf(out, "count: %d active space%s in %s\n", len(spaces), pluralS(len(spaces)), workspace)
 	fmt.Fprintf(out, "spaces[%d]{id,name}:\n", len(spaces))
 	for _, space := range spaces {
 		fmt.Fprintf(out, "  %s,%s\n", output.ToonCell(space.ID), output.ToonCell(space.Name))
@@ -153,7 +153,7 @@ func cmdLists(args []string, c *clickup.Client, out io.Writer) int {
 		output.WriteHelp(out, listsModeHint(archived))
 		return 0
 	}
-	fmt.Fprintf(out, "lists: %d %s list%s in space %s\n", len(refs), state, pluralS(len(refs)), spaceLabel)
+	fmt.Fprintf(out, "count: %d %s list%s in space %s\n", len(refs), state, pluralS(len(refs)), spaceLabel)
 	fmt.Fprintf(out, "lists[%d]{id,name,folder}:\n", len(refs))
 	for _, ref := range refs {
 		fmt.Fprintf(out, "  %s,%s,%s\n", output.ToonCell(ref.ID), output.ToonCell(ref.Name), output.ToonCell(ref.Folder))

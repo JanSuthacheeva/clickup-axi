@@ -47,7 +47,7 @@ func TestTasksListsOpenAssignedTasks(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
 	for _, want := range []string{
-		"tasks: 2 open tasks assigned to jan",
+		"count: 2 open tasks assigned to jan",
 		"tasks[2]{id,title,status,due}:",
 		`86ey1,"Fix login, redirect",in progress,2026-07-06`,
 		"86ey2,QA checkout,to do,",
@@ -128,7 +128,7 @@ func TestTasksSpaceByNameFiltersTheListing(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, `tasks: 2 open tasks assigned to jan in space 90121 "Webshop"`) {
+	if !strings.Contains(out, `count: 2 open tasks assigned to jan in space 90121 "Webshop"`) {
 		t.Errorf("header missing the space label\noutput:\n%s", out)
 	}
 }
@@ -198,7 +198,7 @@ func TestTasksAssigneeAllWithSpaceListsEveryone(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, `tasks: 2 open tasks for any assignee in space 90121 "Webshop"`) {
+	if !strings.Contains(out, `count: 2 open tasks for any assignee in space 90121 "Webshop"`) {
 		t.Errorf("header missing the any-assignee scope\noutput:\n%s", out)
 	}
 }
@@ -226,7 +226,7 @@ func TestTasksAssigneeByNameListsTheirTasks(t *testing.T) {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
 	for _, want := range []string{
-		"tasks: 1 open task assigned to Ting Nguyen",
+		"count: 1 open task assigned to Ting Nguyen",
 		"tasks[1]{id,title,status,due}:",
 		"86ey9,Translate homepage,in progress,",
 	} {
