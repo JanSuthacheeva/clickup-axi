@@ -62,11 +62,19 @@ clickup-axi tasks edit HGAI-2316 --append-body "QA notes ..."       # add to the
 clickup-axi tasks edit HGAI-2316 --add-tag qa --remove-tag wip      # existing space tags only
 clickup-axi tasks edit HGAI-2316 --parent HGAI-2300                 # make/move a subtask (same list)
 clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
+clickup-axi tasks close HGAI-2316           # dry run: shows what closing would change
+clickup-axi tasks close HGAI-2316 --yes     # sets the List's closed status
 ```
 
 `tasks edit --parent <task-id>` can make a task a subtask or change
 its parent within the same List. ClickUp's API cannot clear a parent,
 so promoting a subtask to a standalone task must be done in ClickUp.
+
+`tasks close` is the first guarded command: closing removes the task
+from every default listing, so without `--yes` it only previews the
+status change. Agents are instructed to show the user that dry run and
+confirm before adding `--yes`; the confirmation echoes the previous
+status for a one-step reopen via `tasks edit --status`.
 
 Task ids can be internal (`86ey3tx8m`) or custom (`HGAI-2316`).
 `clickup-axi tasks --help` and `clickup-axi search --help` have flags

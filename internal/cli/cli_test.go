@@ -126,6 +126,8 @@ commands:
                            (--space scopes a list name; --parent makes a subtask; --status/--assignee/--priority/--due/--body/--tag set fields)
   tasks edit <id>          Change status, assignees, priority, name, due date, description, tags, parent
   tasks comment <id>       Add a comment to a task (--text "<text>")
+  tasks close <id>         Close a task (sets the list's closed status)
+                           (a dry run without --yes; --yes closes)
   config                   Show layered defaults and where each value comes from
                            (set/unset default_list; flag > env > project > personal; --project writes .clickup-axi.toml at the git root)
   auth login               Store a personal API token (read from stdin)

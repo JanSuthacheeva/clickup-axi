@@ -85,8 +85,11 @@ type Task struct {
 	// present because getTask always requests it; edits that append to
 	// the body build on it.
 	MarkdownDescription string `json:"markdown_description"`
-	Status              struct {
+	// Status.Type is ClickUp's status class (open / custom / done /
+	// closed); "closed" marks the terminal status close targets.
+	Status struct {
 		Status string `json:"status"`
+		Type   string `json:"type"`
 	} `json:"status"`
 	Priority *struct {
 		Priority string `json:"priority"`
@@ -121,6 +124,7 @@ type List struct {
 	Name     string `json:"name"`
 	Statuses []struct {
 		Status string `json:"status"`
+		Type   string `json:"type"`
 	} `json:"statuses"`
 	// Space carries the list's containing space, so an id-form list
 	// input still leads to the space-scoped lookups (tags) without a
