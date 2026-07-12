@@ -1,11 +1,18 @@
 # clickup-axi
 
 > [!NOTE]
-> **Approaching 1.0.** The command surface for 1.0 is complete and
-> release candidates are being cut; keep the binary current
-> (`clickup-axi update`, or agree when the update notice appears).
-> Feature requests are very welcome in the
+> **v1.0.0 is close.** The command surface is complete and the package
+> is considered stable; release candidates are being cut and benchmarks
+> will be published soon. Keep the binary current (`clickup-axi update`,
+> or agree when the update notice appears). Feature requests are very
+> welcome in the
 > [issues](https://github.com/JanSuthacheeva/clickup-axi/issues).
+
+> [!WARNING]
+> **AI-coded, barely reviewed.** This project is written by AI agents
+> and the code has so far received very little human review. That will
+> change in the future. Until then, judge it by its behavior and tests,
+> and report anything odd in the issues.
 
 A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md)
 design principles: token-efficient output, structured errors, and
