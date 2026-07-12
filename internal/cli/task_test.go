@@ -16,13 +16,14 @@ import (
 )
 
 type fakeClickUp struct {
-	mux        *http.ServeMux
-	putBodies  []map[string]any
-	putRaw     []string
-	postBodies []map[string]string
-	commentGET int
-	tagAdds    []string
-	tagRems    []string
+	mux          *http.ServeMux
+	putBodies    []map[string]any
+	putRaw       []string
+	postBodies   []map[string]string
+	createBodies []map[string]any
+	commentGET   int
+	tagAdds      []string
+	tagRems      []string
 }
 
 func newFakeClickUp(t *testing.T) (*fakeClickUp, *clickup.Client) {

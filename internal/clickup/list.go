@@ -1,9 +1,11 @@
 package clickup
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // FolderlessList is the explicit folder context rendered for a list
@@ -73,6 +75,73 @@ func (c *Client) GetSpaceLists(spaceID string, archived bool) ([]ListRef, *APIEr
 		}
 	}
 	return refs, nil
+}
+
+// ResolveList turns user input into a list within one space: a numeric
+// value is used as an id directly (no lookup), anything else is matched
+// against the space's active lists - an exact match (case-insensitive)
+// wins, otherwise a unique substring match. Every miss/ambiguity
+// inlines candidate id,name pairs with folder context for a one-step
+// retry - the same recovery pattern as ResolveSpace and ResolveMember.
+func (c *Client) ResolveList(spaceID, input string) (*ListRef, *APIError) {
+	if isDigits(input) {
+		return &ListRef{ID: input}, nil
+	}
+	refs, err := c.GetSpaceLists(spaceID, false)
+	if err != nil {
+		return nil, err
+	}
+	var exact, partial []ListRef
+	for _, l := range refs {
+		switch {
+		case strings.EqualFold(l.Name, input):
+			exact = append(exact, l)
+		case containsFold(l.Name, input):
+			partial = append(partial, l)
+		}
+	}
+	candidates := exact
+	if len(candidates) == 0 {
+		candidates = partial
+	}
+	switch len(candidates) {
+	case 1:
+		return &candidates[0], nil
+	case 0:
+		return nil, &APIError{Message: fmt.Sprintf(
+			"list %q matches none of the space's %d lists: %s", input, len(refs), listRefList(refs))}
+	}
+	return nil, &APIError{Message: fmt.Sprintf(
+		"list %q is ambiguous: %s", input, listRefList(candidates))}
+}
+
+// listRefList renders lists as `901 "Sprint 12" (folderless), 902
+// "Sprint 12" (in Development)` for inlining into error messages; the
+// folder context keeps duplicate names distinguishable, capped like the
+// other resolvers' candidate lists.
+func listRefList(refs []ListRef) string {
+	if len(refs) == 0 {
+		return "none (the space has no active lists)"
+	}
+	shown := refs
+	var more int
+	if len(shown) > resolveListCap {
+		more = len(shown) - resolveListCap
+		shown = shown[:resolveListCap]
+	}
+	parts := make([]string, len(shown))
+	for i, l := range shown {
+		folder := l.Folder
+		if folder != FolderlessList {
+			folder = "(in " + folder + ")"
+		}
+		parts[i] = fmt.Sprintf("%s %q %s", l.ID, l.Name, folder)
+	}
+	out := strings.Join(parts, ", ")
+	if more > 0 {
+		out += fmt.Sprintf(", and %d more (ask the user for the exact list name)", more)
+	}
+	return out
 }
 
 func (c *Client) getFolderlessLists(spaceID string, archived bool) ([]listRefWire, *APIError) {

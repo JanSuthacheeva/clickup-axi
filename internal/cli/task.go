@@ -647,9 +647,17 @@ func cmdTaskEdit(args []string, c *clickup.Client, out io.Writer) int {
 // code distinguishes locally-parseable usage errors (2) from
 // server-derived validation failures (1).
 func renderFieldErrors(out io.Writer, id string, errs []string, code int) int {
+	return renderFieldReport(out, errs, code, "changed",
+		fmt.Sprintf("`clickup-axi tasks edit %s ...`", id))
+}
+
+// renderFieldReport is the shared field-error rendering behind edit and
+// create: verb states what did not happen ("changed"/"created"), rerun
+// is the retry command the hint references.
+func renderFieldReport(out io.Writer, errs []string, code int, verb, rerun string) int {
 	if len(errs) == 1 {
 		output.WriteError(out, errs[0],
-			fmt.Sprintf("Fix the value above, then rerun `clickup-axi tasks edit %s ...`", id))
+			fmt.Sprintf("Fix the value above, then rerun %s", rerun))
 		return code
 	}
 	// Indent each error's continuation lines (e.g. a status "valid:" list)
@@ -658,10 +666,10 @@ func renderFieldErrors(out io.Writer, id string, errs []string, code int) int {
 	for i, e := range errs {
 		items[i] = strings.ReplaceAll(e, "\n", "\n  ")
 	}
-	msg := fmt.Sprintf("%d fields cannot be applied (nothing was changed):\n  - %s",
-		len(items), strings.Join(items, "\n  - "))
+	msg := fmt.Sprintf("%d fields cannot be applied (nothing was %s):\n  - %s",
+		len(items), verb, strings.Join(items, "\n  - "))
 	output.WriteError(out, msg,
-		fmt.Sprintf("Fix all the values above, then rerun `clickup-axi tasks edit %s ...` once", id))
+		fmt.Sprintf("Fix all the values above, then rerun %s once", rerun))
 	return code
 }
 
@@ -897,6 +905,10 @@ func listStatuses(c *clickup.Client, listID string) []string {
 	if err != nil {
 		return nil
 	}
+	return statusNames(l)
+}
+
+func statusNames(l *clickup.List) []string {
 	names := make([]string, 0, len(l.Statuses))
 	for _, s := range l.Statuses {
 		names = append(names, s.Status)

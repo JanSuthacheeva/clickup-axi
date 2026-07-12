@@ -2,14 +2,14 @@
 name: clickup-axi
 description: >
   Manage ClickUp tasks via the clickup-axi CLI - list tasks assigned to
-  the user, view a task with its comments and description by id, change
-  a task's status, assignees, priority, due date, name, description, or
-  tags, add a comment to a task, or discover a ClickUp space or List. Use
-  when the user mentions ClickUp,
-  sprint tasks, tickets with ids like HGAI-2316 or ECOM-2254, asks what
-  is on their plate, or wants a task looked up, summarized, commented
-  on, reassigned, retitled, reprioritized, rescheduled, tagged, or
-  moved to another status.
+  the user, view a task with its comments and description by id, create
+  a task or subtask in a List, change a task's status, assignees,
+  priority, due date, name, description, or tags, add a comment to a
+  task, or discover a ClickUp space or List. Use when the user mentions
+  ClickUp, sprint tasks, tickets with ids like HGAI-2316 or ECOM-2254,
+  asks what is on their plate, or wants a task created, looked up,
+  summarized, commented on, reassigned, retitled, reprioritized,
+  rescheduled, tagged, or moved to another status.
 user-invocable: false
 author: Jan Suthacheeva
 metadata:
@@ -78,6 +78,9 @@ clickup-axi spaces                                                       # activ
 clickup-axi lists --space "<space>"                                      # Lists in one space, including folder context; names resolve case-insensitively
 clickup-axi lists --space "<space>" --archived                           # archived Lists in the selected space
 clickup-axi search "<query>" --assignee all --space "<space>"            # widen beyond your tasks; space and assignee resolve by name
+clickup-axi tasks create "<name>" --list "<list>" --space "<space>"      # create a task; a list name needs --space, a numeric list id works alone
+clickup-axi tasks create "<name>" --list <id> --assignee me --due <date> # fields combine at creation; --status, --priority, --body "<markdown>", --tag too
+clickup-axi tasks create "<name>" --parent <task id>                     # create a subtask; the list comes from the parent, no --list needed
 clickup-axi tasks edit <id> --status "<status>"
 clickup-axi tasks edit <id> --assignee <who> --unassign <who>            # reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id
 clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>" # priority: urgent|high|normal|low|none; due: YYYY-MM-DD or none; fields combine in one call
@@ -104,6 +107,15 @@ inlined. Every invalid field is reported together with the others
 before anything is written - fix them all and retry once. Re-applying
 the current state (same status, same assignees, existing tag) is a
 stated no-op.
+
+`tasks create "<name>" --list "<list>"` makes a new task. A list name
+needs `--space "<project>"` because list names are only unique within
+one space; a numeric list id works alone (discover ids with `lists`).
+The edit field flags also work at creation (`--status`, `--assignee`,
+`--priority`, `--due`, `--body`, `--tag` - validated together the same
+way), and `--parent <task id>` creates a subtask in the parent's list
+with no `--list` needed. The confirmation echoes the created id, list,
+status, and url - use that id for follow-ups.
 
 `tasks` and `search` listings show `id,title,status,due` by default;
 `--fields assignees,priority,tags,list,url` adds columns from the same

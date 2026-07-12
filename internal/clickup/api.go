@@ -88,6 +88,56 @@ func (c *Client) RemoveTag(taskID, tag string) *APIError {
 	return c.do(http.MethodDelete, "/task/"+taskID+"/tag/"+url.PathEscape(tag), nil, nil)
 }
 
+// TaskCreate is the payload of one task creation. Zero values omit a
+// field so ClickUp applies its defaults (the list's initial status, no
+// priority, no due date). It maps to a single POST /list/{id}/task, so
+// a create is atomic - tags included, unlike an edit's per-tag calls.
+type TaskCreate struct {
+	Name      string
+	Body      string // markdown description
+	Status    string
+	Priority  int   // 0 = unset, 1 (urgent) .. 4 (low)
+	DueDate   int64 // 0 = unset, else millisecond epoch
+	Assignees []int64
+	Tags      []string
+	Parent    string // parent task id (internal) for a subtask
+}
+
+// CreateTask creates a task in the list and returns the task ClickUp
+// stored, so the caller can echo server-derived facts (id, url, the
+// defaulted status) instead of guessing them.
+func (c *Client) CreateTask(listID string, tc TaskCreate) (*Task, *APIError) {
+	body := map[string]any{"name": tc.Name}
+	if tc.Body != "" {
+		body["markdown_content"] = tc.Body
+	}
+	if tc.Status != "" {
+		body["status"] = tc.Status
+	}
+	if tc.Priority != 0 {
+		body["priority"] = tc.Priority
+	}
+	if tc.DueDate != 0 {
+		body["due_date"] = tc.DueDate
+		// Date-only: the CLI takes and renders dates, not times.
+		body["due_date_time"] = false
+	}
+	if len(tc.Assignees) > 0 {
+		body["assignees"] = tc.Assignees
+	}
+	if len(tc.Tags) > 0 {
+		body["tags"] = tc.Tags
+	}
+	if tc.Parent != "" {
+		body["parent"] = tc.Parent
+	}
+	var t Task
+	if err := c.do(http.MethodPost, "/list/"+url.PathEscape(listID)+"/task", body, &t); err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func (c *Client) GetList(id string) (*List, *APIError) {
 	var l List
 	if err := c.do(http.MethodGet, "/list/"+id, nil, &l); err != nil {

@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tasks create "<name>" --list <name|id>` creates a task, completing
+  the write loop: `--status`, `--assignee`, `--priority`, `--due`,
+  `--body`, and `--tag` set fields at creation in one atomic POST, all
+  validated together before anything is written (bad values report in
+  one aggregated list; tags must already exist in the space and are
+  written in their stored casing). A list name needs `--space` because
+  list names are only unique within one space; a numeric list id works
+  alone. `--parent <task id>` creates a subtask, deriving the list from
+  the parent and refusing a contradicting `--list`. The confirmation
+  echoes the server-stored id, list, status, and url.
 - `--fields` adds columns to `tasks` and `search` listings on request
   (`assignees`, `priority`, `tags`, `list`, `url`), rendered from the
   response already fetched - no extra API calls. The flag is additive

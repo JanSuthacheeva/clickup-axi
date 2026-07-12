@@ -10,7 +10,7 @@ import (
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
-const tasksHelp = `clickup-axi tasks [id | edit <id> | comment <id>] [flags]
+const tasksHelp = `clickup-axi tasks [id | create "<name>" | edit <id> | comment <id>] [flags]
 
 Without arguments: open tasks assigned to you in your workspace,
 including subtasks. --assignee lists a teammate's open tasks instead;
@@ -39,6 +39,19 @@ view flags (with an id):
   --fields <names> add fields the view omits (url); fields already
                    shown are silently absorbed
 
+create "<name>" (make a new task; "create" is a reserved word):
+  --list <name|id>       target list (required); a name needs --space
+  --space <name|id>      the space (project) whose list --list names
+  --status "<status>"    initial status (else the list's default)
+  --assignee <who>       assign on creation (repeatable, comma-separated);
+                         who = me | member name | id
+  --priority <p>         urgent | high | normal | low | none (= unset)
+  --due <date>           due date (YYYY-MM-DD)
+  --body "<markdown>"    description
+  --parent <id>          create as a subtask; the list comes from the
+                         parent, so --list is optional
+  --tag <tag>            add an existing space tag (repeatable, comma-separated)
+
 edit <id> (mutations; "edit" is a reserved word, not an id):
   --status "<status>"    change status; valid statuses are echoed
                          when the status does not match
@@ -64,6 +77,9 @@ examples:
   clickup-axi tasks --page 2
   clickup-axi tasks HGAI-2316
   clickup-axi tasks 86ey3tx8m --full
+  clickup-axi tasks create "Fix login flow" --list "Sprint 12" --space "Webshop"
+  clickup-axi tasks create "Fix login flow" --list 901234 --priority high --assignee me
+  clickup-axi tasks create "Test the redirect" --parent HGAI-2316
   clickup-axi tasks edit HGAI-2316 --status "in review"
   clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me
   clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01
@@ -76,6 +92,8 @@ func cmdTasks(args []string, c *clickup.Client, out io.Writer) int {
 		case "--help", "-h":
 			fmt.Fprintln(out, tasksHelp)
 			return 0
+		case "create":
+			return cmdTaskCreate(args[1:], c, out)
 		case "edit":
 			return cmdTaskEdit(args[1:], c, out)
 		case "comment":

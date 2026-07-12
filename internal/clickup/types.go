@@ -107,6 +107,12 @@ type List struct {
 	Statuses []struct {
 		Status string `json:"status"`
 	} `json:"statuses"`
+	// Space carries the list's containing space, so an id-form list
+	// input still leads to the space-scoped lookups (tags) without a
+	// --space flag.
+	Space struct {
+		ID string `json:"id"`
+	} `json:"space"`
 }
 
 type Team struct {
