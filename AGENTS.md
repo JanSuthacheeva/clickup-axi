@@ -103,7 +103,9 @@ instead).
   in the `Authorization` header (no Bearer prefix). `tasks move` is the
   lone v3 call: `Client.doV3` derives the sibling `/v3` base from the v2
   one and `translateHTTPError` reads both error shapes (v2 `{err,ECODE}`,
-  v3 `{message}`). See `docs/v1.0.0.md` step 9 for the endpoint finding.
+  v3 `{message}`). Live probes established the move semantics: statuses
+  match across lists by name, and `status_mappings` are rejected when
+  the target already has the status.
 - Task ids come in two kinds: internal (`86ey3tx8m`) and custom
   (`HGAI-2316`). Resolution policy lives in `clickup.GetTaskByID`:
   `CLICKUP_AXI_CUSTOM_IDS` set = custom-only; otherwise internal first,
