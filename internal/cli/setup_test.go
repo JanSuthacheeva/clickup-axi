@@ -57,8 +57,8 @@ func TestSetupRejectsUnknownApp(t *testing.T) {
 }
 
 func TestSetupGlobalInstallsDetectedHosts(t *testing.T) {
-	home := setupHome(t)
 	_, c := newFakeClickUp(t)
+	home := setupHome(t)
 
 	out, code := runCLI(t, c, "setup", "--global")
 	if code != 0 {
@@ -118,8 +118,8 @@ func TestSetupNoHostsSuppressesLoadHint(t *testing.T) {
 }
 
 func TestSetupRerunIsNoOp(t *testing.T) {
-	setupHome(t)
 	_, c := newFakeClickUp(t)
+	setupHome(t)
 	runCLI(t, c, "setup", "--global")
 	out, code := runCLI(t, c, "setup", "--global")
 	if code != 0 || !strings.Contains(out, "claude-code: already installed (no-op)") {
@@ -128,8 +128,8 @@ func TestSetupRerunIsNoOp(t *testing.T) {
 }
 
 func TestSetupRepairsStaleCommand(t *testing.T) {
-	home := setupHome(t)
 	_, c := newFakeClickUp(t)
+	home := setupHome(t)
 	stale := `{"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "/gone/clickup-axi context"}]}]}}`
 	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte(stale), 0o644); err != nil {
 		t.Fatal(err)
@@ -145,8 +145,8 @@ func TestSetupRepairsStaleCommand(t *testing.T) {
 }
 
 func TestSetupProjectScopeInstallsIntoCwd(t *testing.T) {
-	setupHome(t)
 	_, c := newFakeClickUp(t)
+	setupHome(t)
 	dir := t.TempDir()
 	t.Chdir(dir)
 
@@ -167,8 +167,8 @@ func TestSetupProjectScopeInstallsIntoCwd(t *testing.T) {
 }
 
 func TestSetupRemoveCycle(t *testing.T) {
-	setupHome(t)
 	_, c := newFakeClickUp(t)
+	setupHome(t)
 	runCLI(t, c, "setup", "--global")
 
 	out, code := runCLI(t, c, "setup", "--global", "--remove")
@@ -188,8 +188,8 @@ func TestSetupRemoveCycle(t *testing.T) {
 }
 
 func TestSetupAppFilterLimitsToOneHost(t *testing.T) {
-	setupHome(t)
 	_, c := newFakeClickUp(t)
+	setupHome(t)
 	out, code := runCLI(t, c, "setup", "--global", "--app", "claude-code")
 	if code != 0 {
 		t.Fatalf("exit code = %d\noutput:\n%s", code, out)
@@ -200,8 +200,8 @@ func TestSetupAppFilterLimitsToOneHost(t *testing.T) {
 }
 
 func TestSetupFailureExitsOneButProcessesOtherHosts(t *testing.T) {
-	home := setupHome(t)
 	_, c := newFakeClickUp(t)
+	home := setupHome(t)
 	if err := os.WriteFile(filepath.Join(home, ".claude", "settings.json"), []byte("{broken"), 0o644); err != nil {
 		t.Fatal(err)
 	}

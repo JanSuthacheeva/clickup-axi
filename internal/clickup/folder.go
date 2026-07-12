@@ -1,8 +1,10 @@
 package clickup
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -31,6 +33,69 @@ func (c *Client) GetFolder(id string) (*Folder, *APIError) {
 		return nil, err
 	}
 	return &f, nil
+}
+
+// ResolveFolder turns user input into a folder within one space - the
+// same policy as ResolveList: a numeric value is fetched as an id
+// (which also validates it), anything else matches the space's active
+// folders case-insensitively, exact first then a unique substring.
+// Every miss/ambiguity inlines candidate id,name pairs for a one-step
+// retry.
+func (c *Client) ResolveFolder(spaceID, input string) (*Folder, *APIError) {
+	if isDigits(input) {
+		return c.GetFolder(input)
+	}
+	var out struct {
+		Folders []Folder `json:"folders"`
+	}
+	if err := c.do(http.MethodGet, "/space/"+url.PathEscape(spaceID)+"/folder?archived=false", nil, &out); err != nil {
+		return nil, err
+	}
+	var exact, partial []Folder
+	for _, f := range out.Folders {
+		switch {
+		case strings.EqualFold(f.Name, input):
+			exact = append(exact, f)
+		case containsFold(f.Name, input):
+			partial = append(partial, f)
+		}
+	}
+	candidates := exact
+	if len(candidates) == 0 {
+		candidates = partial
+	}
+	switch len(candidates) {
+	case 1:
+		return &candidates[0], nil
+	case 0:
+		return nil, &APIError{Message: fmt.Sprintf(
+			"folder %q matches none of the space's %d folders: %s", input, len(out.Folders), folderNameList(out.Folders))}
+	}
+	return nil, &APIError{Message: fmt.Sprintf(
+		"folder %q is ambiguous: %s", input, folderNameList(candidates))}
+}
+
+// folderNameList renders folders as `9012 "Sprints", ...` for inlining
+// into error messages, capped like the other resolvers' candidates.
+func folderNameList(folders []Folder) string {
+	if len(folders) == 0 {
+		return "none (the space has no folders)"
+	}
+	shown := folders
+	var more int
+	if len(shown) > resolveListCap {
+		more = len(shown) - resolveListCap
+		shown = shown[:resolveListCap]
+	}
+	parts := make([]string, len(shown))
+	for i, f := range shown {
+		parts[i] = fmt.Sprintf("%s %q", f.ID, f.Name)
+	}
+	out := strings.Join(parts, ", ")
+	if more > 0 {
+		out += fmt.Sprintf(", and %d more (ask the user for the exact folder name)", more)
+	}
+	return out
 }
 
 // CurrentList picks the folder's current list. Preference order:
