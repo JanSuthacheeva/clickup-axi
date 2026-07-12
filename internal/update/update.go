@@ -322,21 +322,40 @@ func (u *Updater) writeCache(tag string) {
 	_ = os.WriteFile(u.CachePath, []byte(line), 0o600)
 }
 
-// isReleaseVersion reports whether s looks like a plain release
-// version (X.Y.Z), as opposed to "dev" or a VCS pseudo-version.
+// isReleaseVersion reports whether s looks like a published release
+// version - X.Y.Z, optionally with an -rc.N suffix - as opposed to
+// "dev" or a VCS pseudo-version. Release candidates count: an RC
+// binary must still learn about the final release via the notice. The
+// accepted suffix is deliberately exactly -rc.N, so pseudo-versions
+// (0.0.0-20260712...-abcdef) keep reading as dev builds.
 func isReleaseVersion(s string) bool {
-	parts := strings.Split(s, ".")
+	base, suffix, ok := strings.Cut(s, "-")
+	if ok {
+		rest, isRC := strings.CutPrefix(suffix, "rc.")
+		if !isRC || !allDigits(rest) {
+			return false
+		}
+	}
+	parts := strings.Split(base, ".")
 	if len(parts) != 3 {
 		return false
 	}
 	for _, p := range parts {
-		if p == "" {
+		if !allDigits(p) {
 			return false
 		}
-		for _, r := range p {
-			if r < '0' || r > '9' {
-				return false
-			}
+	}
+	return true
+}
+
+// allDigits reports whether s is non-empty and numeric only.
+func allDigits(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
 		}
 	}
 	return true
