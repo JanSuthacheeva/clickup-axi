@@ -82,9 +82,19 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 		return renderUnknownFields(out, unknown, fmt.Sprintf("Run `clickup-axi tasks %s --fields url`", id))
 	}
 
-	t, err := c.GetTaskByID(id)
+	t, err := c.GetTaskWithSubtasksByID(id)
 	if err != nil {
 		return renderAPIError(out, err)
+	}
+	var parent *clickup.Task
+	if t.Parent != "" {
+		// Parent is an internal id even in custom-id-only workspaces. Fetch
+		// it directly so the relationship can still render the workspace's
+		// preferred custom id, title, and current status.
+		parent, err = c.GetTaskByInternalID(t.Parent)
+		if err != nil {
+			return renderAPIError(out, err)
+		}
 	}
 
 	var comments []clickup.Comment
@@ -97,7 +107,7 @@ func cmdTaskView(args []string, c *clickup.Client, out io.Writer) int {
 		}
 	}
 
-	renderTask(out, t, comments, showComments, full, extra)
+	renderTask(out, t, parent, comments, showComments, full, extra)
 	return 0
 }
 
@@ -111,7 +121,7 @@ func displayID(t *clickup.Task) string {
 	return t.ID
 }
 
-func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, showComments int, full bool, extra []taskField) {
+func renderTask(out io.Writer, t, parent *clickup.Task, comments []clickup.Comment, showComments int, full bool, extra []taskField) {
 	fmt.Fprintln(out, "task:")
 	fmt.Fprintf(out, "  id: %s\n", displayID(t))
 	fmt.Fprintf(out, "  title: %s\n", t.Name)
@@ -135,6 +145,27 @@ func renderTask(out io.Writer, t *clickup.Task, comments []clickup.Comment, show
 	for _, f := range extra {
 		if v := f.render(t); v != "" {
 			fmt.Fprintf(out, "  %s: %s\n", f.name, v)
+		}
+	}
+	if parent != nil {
+		fmt.Fprintln(out, "  parent:")
+		fmt.Fprintf(out, "    id: %s\n", displayID(parent))
+		fmt.Fprintf(out, "    title: %s\n", parent.Name)
+		fmt.Fprintf(out, "    status: %s\n", parent.Status.Status)
+	}
+	direct := make([]clickup.Task, 0, len(t.Subtasks))
+	for _, child := range t.Subtasks {
+		if child.Parent == t.ID {
+			direct = append(direct, child)
+		}
+	}
+	if len(direct) == 0 {
+		fmt.Fprintln(out, "  subtasks: 0 direct subtasks")
+	} else {
+		fmt.Fprintf(out, "  subtasks[%d]{id,title,status}:\n", len(direct))
+		for i := range direct {
+			child := &direct[i]
+			fmt.Fprintf(out, "    %s,%s,%s\n", output.ToonCell(displayID(child)), output.ToonCell(child.Name), output.ToonCell(child.Status.Status))
 		}
 	}
 

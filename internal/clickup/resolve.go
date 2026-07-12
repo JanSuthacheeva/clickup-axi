@@ -45,6 +45,14 @@ func (c *Client) GetTaskWithSubtasksByID(id string) (*Task, *APIError) {
 	return c.getTaskByID(id, true)
 }
 
+// GetTaskByInternalID fetches a known internal id without applying the
+// user-input custom-id policy. Relationship fields such as Task.Parent are
+// always internal ids, including when CLICKUP_AXI_CUSTOM_IDS is enabled.
+func (c *Client) GetTaskByInternalID(id string) (*Task, *APIError) {
+	c.DateLocation()
+	return c.getTask(taskRef{id: id})
+}
+
 func (c *Client) getTaskByID(id string, includeSubtasks bool) (*Task, *APIError) {
 	c.DateLocation()
 	if CustomIDsForced() {
