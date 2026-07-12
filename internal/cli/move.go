@@ -23,14 +23,16 @@ func cmdTaskMove(args []string, c *clickup.Client, out io.Writer) int {
 		switch args[i] {
 		case "--list":
 			i++
-			if i >= len(args) {
+			// Guarded flags reject a flag-shaped next token as a missing
+			// value - the same rule create and edit apply.
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--list needs a value", "Run `clickup-axi tasks move <id> --list <name|id>`")
 				return 2
 			}
 			list = args[i]
 		case "--space":
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--space needs a value", "Run `clickup-axi tasks move <id> --list \"<list>\" --space \"<space>\"`")
 				return 2
 			}
@@ -38,7 +40,7 @@ func cmdTaskMove(args []string, c *clickup.Client, out io.Writer) int {
 		case "--status":
 			statusSet = true
 			i++
-			if i >= len(args) {
+			if i >= len(args) || strings.HasPrefix(args[i], "-") {
 				output.WriteError(out, "--status needs a value", "Run `clickup-axi tasks move <id> --list <name|id> --status \"<status>\"`")
 				return 2
 			}

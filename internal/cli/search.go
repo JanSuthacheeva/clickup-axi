@@ -102,6 +102,14 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 			case "--space":
 				space = val
 			case "--list":
+				// A non-numeric value would be sent to the API as a list id
+				// and silently filter to nothing - a confident zero on wrong
+				// data. Decidable locally, so it fails before any API call.
+				if !allDigits(val) {
+					output.WriteError(out, fmt.Sprintf("--list needs a numeric list id, got %q", val),
+						"Run `clickup-axi lists --space \"<space>\"` to discover list ids")
+					return 2
+				}
 				list = val
 			case "--updated-after", "--updated-before":
 				// UTC is enough for the grammar gate. Relative values are
@@ -461,7 +469,7 @@ func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchS
 			help = append(help, "Not every task was scanned; narrow with --status/--space/--list/--updated-after")
 		}
 		if sc.updatedAfter != "" || sc.updatedBefore != "" {
-			help = append(help, "Widen the --updated window")
+			help = append(help, "Rerun with a wider --updated-after/--updated-before window")
 		}
 		if sc.assignee != "all" {
 			help = append(help, "Ask the user which project (space) the task is in, then retry with --assignee all --space \"<name>\"")
@@ -478,12 +486,12 @@ func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchS
 	for i := range shown {
 		t := &shown[i].Task
 		fmt.Fprintf(out, "  %s,%s,%s,%s,%s%s\n",
-			displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), shown[i].Where, t.DueDate.Date(), fieldsCells(t, extra))
+			output.ToonCell(displayID(t)), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), shown[i].Where, t.DueDate.Date(), fieldsCells(t, extra))
 	}
 
 	help := []string{"Run `clickup-axi tasks <id>` for full detail and comments"}
 	if len(shown) < len(matches) {
-		help = append(help, "Raise --limit to see more matches")
+		help = append(help, "Rerun with --limit <n> for more matches")
 	}
 	if !sc.complete {
 		help = append(help, "Not every task was scanned; narrow with --status/--space/--list/--updated-after")

@@ -134,12 +134,11 @@ func cmdContext(args []string, c *clickup.Client, out io.Writer) int {
 	fmt.Fprintf(out, "tasks[%d]{id,title,status,due}:\n", len(shown))
 	for i := range shown {
 		t := &shown[i]
-		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date())
+		fmt.Fprintf(out, "  %s,%s,%s,%s\n", output.ToonCell(displayID(t)), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date())
 	}
 	output.WriteHelp(out,
 		firstHelp,
-		"Run `clickup-axi tasks <id>` for details and comments",
-		"Run `clickup-axi --help` for all commands")
+		"Run `clickup-axi tasks <id>` for details and comments")
 	return 0
 }
 

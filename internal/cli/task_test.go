@@ -456,6 +456,19 @@ func TestTaskViewFieldsUnknownNameIsUsageError(t *testing.T) {
 	}
 }
 
+func TestTaskViewSingleDashFlagIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+
+	out, code := runCLI(t, c, "tasks", "abc123", "-x")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	want := "error: unknown flag \"-x\"\n  valid: --comments N, --no-comments, --full, --fields\n"
+	if out != want {
+		t.Errorf("usage error mismatch\ngot:\n%s\nwant:\n%s", out, want)
+	}
+}
+
 func TestTaskViewTruncatesLongDescription(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	long := strings.Repeat("x", 1000)

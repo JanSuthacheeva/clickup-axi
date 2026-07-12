@@ -82,7 +82,10 @@ cross-compiles CGO-free binaries for linux/darwin (amd64+arm64) and
 windows/amd64, and publishes them via `gh release create` as raw
 unversioned assets (`clickup-axi_<os>_<arch>`) plus `SHA256SUMS`. Asset
 names stay unversioned so the `releases/latest/download` URLs in the
-skill never go stale. The tag (minus the `v`) is injected
+skill never go stale. A hyphenated tag (`v1.0.0-rc.1`) publishes as a
+GitHub prerelease, so `releases/latest` - the URL the skill install,
+self-update, and passive notice all resolve - keeps serving the last
+stable release. The tag (minus the `v`) is injected
 into `internal/version.Version` via ldflags; source builds fall back
 to the module build-info version, then `dev`.
 
@@ -103,7 +106,9 @@ instead).
   in the `Authorization` header (no Bearer prefix). `tasks move` is the
   lone v3 call: `Client.doV3` derives the sibling `/v3` base from the v2
   one and `translateHTTPError` reads both error shapes (v2 `{err,ECODE}`,
-  v3 `{message}`). See `docs/v1.0.0.md` step 9 for the endpoint finding.
+  v3 `{message}`). Live probes established the move semantics: statuses
+  match across lists by name, and `status_mappings` are rejected when
+  the target already has the status.
 - Task ids come in two kinds: internal (`86ey3tx8m`) and custom
   (`HGAI-2316`). Resolution policy lives in `clickup.GetTaskByID`:
   `CLICKUP_AXI_CUSTOM_IDS` set = custom-only; otherwise internal first,

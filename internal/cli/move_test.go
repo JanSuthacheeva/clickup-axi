@@ -272,6 +272,12 @@ func TestTaskMoveUsageErrors(t *testing.T) {
 			"error: --list needs a value\nhelp[1]: Run `clickup-axi tasks move <id> --list <name|id>`\n"},
 		{"status needs value", []string{"tasks", "move", "abc123", "--list", "901234", "--status"},
 			"error: --status needs a value\nhelp[1]: Run `clickup-axi tasks move <id> --list <name|id> --status \"<status>\"`\n"},
+		{"list swallows flag", []string{"tasks", "move", "abc123", "--list", "--status", "done"},
+			"error: --list needs a value\nhelp[1]: Run `clickup-axi tasks move <id> --list <name|id>`\n"},
+		{"space swallows flag", []string{"tasks", "move", "abc123", "--list", "901234", "--space", "--status"},
+			"error: --space needs a value\nhelp[1]: Run `clickup-axi tasks move <id> --list \"<list>\" --space \"<space>\"`\n"},
+		{"status swallows flag", []string{"tasks", "move", "abc123", "--list", "901234", "--status", "--space"},
+			"error: --status needs a value\nhelp[1]: Run `clickup-axi tasks move <id> --list <name|id> --status \"<status>\"`\n"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

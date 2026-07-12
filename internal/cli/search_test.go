@@ -423,7 +423,7 @@ func TestSearchZeroMatchesWithDateHintsAtWindow(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "Widen the --updated window") {
+	if !strings.Contains(out, "Rerun with a wider --updated-after/--updated-before window") {
 		t.Errorf("zero matches with a date filter must hint at the window\noutput:\n%s", out)
 	}
 }
@@ -496,7 +496,7 @@ func TestSearchLimitCapsResults(t *testing.T) {
 	if !strings.Contains(out, "showing top 2 of 3 matches") {
 		t.Errorf("output must report the limit\noutput:\n%s", out)
 	}
-	if !strings.Contains(out, "Raise --limit to see more matches") {
+	if !strings.Contains(out, "Rerun with --limit <n> for more matches") {
 		t.Errorf("output must hint how to widen\noutput:\n%s", out)
 	}
 	if strings.Contains(out, "d4,") {
@@ -523,6 +523,19 @@ func TestSearchNeedsQuery(t *testing.T) {
 	}
 	if !strings.Contains(out, "search needs a query") {
 		t.Errorf("output missing query usage error\noutput:\n%s", out)
+	}
+}
+
+func TestSearchListNameIsUsageError(t *testing.T) {
+	_, c := newFakeClickUp(t)
+	out, code := runCLI(t, c, "search", "foo", "--list", "Sprint 12")
+	if code != 2 {
+		t.Fatalf("exit code = %d, want 2\noutput:\n%s", code, out)
+	}
+	want := "error: --list needs a numeric list id, got \"Sprint 12\"\n" +
+		"help[1]: Run `clickup-axi lists --space \"<space>\"` to discover list ids\n"
+	if out != want {
+		t.Errorf("usage error mismatch\ngot:\n%s\nwant:\n%s", out, want)
 	}
 }
 

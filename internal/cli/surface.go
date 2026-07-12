@@ -61,11 +61,7 @@ var surface = []command{
 		summary: "List active Lists in one space",
 		note:    "(--archived shows archived Lists; folder context is included)",
 		skill:   `clickup-axi lists --space "<space>"`,
-		comment: "Lists in one space, including folder context; names resolve case-insensitively",
-	},
-	{
-		skill:   `clickup-axi lists --space "<space>" --archived`,
-		comment: "archived Lists in the selected space",
+		comment: "Lists in one space, with folder context; --archived shows archived Lists instead",
 	},
 	{
 		skill:   `clickup-axi search "<query>" --assignee all --space "<space>"`,
@@ -80,19 +76,15 @@ var surface = []command{
 		summary: "Create a task in a list (--list <name|id>)",
 		note:    "(--space scopes a list name; --parent makes a subtask; --status/--assignee/--priority/--due/--body/--tag set fields)",
 		skill:   `clickup-axi tasks create "<name>" --list "<list>" --space "<space>"`,
-		comment: "create a task; a list name needs --space, a numeric list id works alone",
+		comment: "create a task; with a configured default_list, --list is optional",
 	},
 	{
 		skill:   `clickup-axi tasks create "<name>" --list <id> --assignee me --due <date>`,
-		comment: `due: YYYY-MM-DD or +3days/-1week; --status, --priority, --body "<markdown>", --tag too`,
+		comment: `--status, --priority, --body "<markdown>", --tag work too`,
 	},
 	{
 		skill:   `clickup-axi tasks create "<name>" --parent <task id>`,
 		comment: "create a subtask; the list comes from the parent, no --list needed",
-	},
-	{
-		skill:   `clickup-axi tasks create "<name>"`,
-		comment: "no --list needed once default_list is configured (see config)",
 	},
 	{
 		usage:   "tasks edit <id>",
@@ -150,12 +142,8 @@ var surface = []command{
 		comment: "effective defaults with each value's source",
 	},
 	{
-		skill:   `clickup-axi config set default_list "<list|id>" --space "<space>"`,
-		comment: "make --list optional on tasks create; validates and stores the list id",
-	},
-	{
-		skill:   `clickup-axi config set default_list "folder:<id|name>" --space "<space>" --project`,
-		comment: "sprint folders: each create targets the folder's current list",
+		skill:   `clickup-axi config set default_list "<list|id|folder:...>" --space "<space>"`,
+		comment: "default for tasks create; folder:<id|name> tracks a sprint folder's current list; --project shares it via the repo",
 	},
 	{
 		usage:   "auth login",
