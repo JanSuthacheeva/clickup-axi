@@ -17,6 +17,7 @@ import (
 
 type fakeClickUp struct {
 	mux          *http.ServeMux
+	moveBodies   []string
 	putBodies    []map[string]any
 	putRaw       []string
 	postBodies   []map[string]string
