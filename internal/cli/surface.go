@@ -72,6 +72,10 @@ var surface = []command{
 		comment: "widen beyond your tasks; space and assignee resolve by name",
 	},
 	{
+		skill:   `clickup-axi search "<query>" --updated-after -1week`,
+		comment: "date bounds accept YYYY-MM-DD or signed day/week offsets",
+	},
+	{
 		usage:   `tasks create "<name>"`,
 		summary: "Create a task in a list (--list <name|id>)",
 		note:    "(--space scopes a list name; --parent makes a subtask; --status/--assignee/--priority/--due/--body/--tag set fields)",
@@ -80,7 +84,7 @@ var surface = []command{
 	},
 	{
 		skill:   `clickup-axi tasks create "<name>" --list <id> --assignee me --due <date>`,
-		comment: `fields combine at creation; --status, --priority, --body "<markdown>", --tag too`,
+		comment: `due: YYYY-MM-DD or +3days/-1week; --status, --priority, --body "<markdown>", --tag too`,
 	},
 	{
 		skill:   `clickup-axi tasks create "<name>" --parent <task id>`,
@@ -97,7 +101,7 @@ var surface = []command{
 	},
 	{
 		skill:   `clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>"`,
-		comment: "priority: urgent|high|normal|low|none; due: YYYY-MM-DD or none; fields combine in one call",
+		comment: "priority: urgent|high|normal|low|none; due: YYYY-MM-DD, +3days/-1week, or none; fields combine in one call",
 	},
 	{
 		skill:   `clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>`,

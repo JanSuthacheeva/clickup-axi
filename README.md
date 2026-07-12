@@ -55,6 +55,7 @@ clickup-axi tasks create "Test the redirect" --parent HGAI-2316   # subtask, lis
 clickup-axi tasks edit HGAI-2316 --status "in review"
 clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me   # reassign (names resolve)
 clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01   # multi-field edit, one atomic call
+clickup-axi tasks edit HGAI-2316 --due +3days                       # workspace today plus 3 days
 clickup-axi tasks edit HGAI-2316 --append-body "QA notes ..."       # add to the description
 clickup-axi tasks edit HGAI-2316 --add-tag qa --remove-tag wip      # existing space tags only
 clickup-axi tasks comment HGAI-2316 --text "Deployed to staging"
@@ -82,6 +83,7 @@ project rather than scan widely:
 clickup-axi search invoice --status "in review"
 clickup-axi search checkout --assignee ting --space "Webshop"
 clickup-axi search migration --assignee all --updated-after 2026-05-01
+clickup-axi search migration --updated-after -1week
 ```
 
 ## Session hook
