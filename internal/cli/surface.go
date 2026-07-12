@@ -117,6 +117,17 @@ var surface = []command{
 		skill:   `clickup-axi tasks comment <id> --text "<text>"`,
 	},
 	{
+		usage:   "tasks close <id>",
+		summary: "Close a task (sets the list's closed status)",
+		note:    "(a dry run without --yes; --yes closes)",
+		skill:   "clickup-axi tasks close <id>",
+		comment: "dry run: preview what closing would change (nothing happens)",
+	},
+	{
+		skill:   "clickup-axi tasks close <id> --yes",
+		comment: "close the task - only after the user confirmed the dry run",
+	},
+	{
 		usage:   "auth login",
 		summary: "Store a personal API token (read from stdin)",
 	},

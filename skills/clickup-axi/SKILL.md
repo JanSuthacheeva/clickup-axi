@@ -88,6 +88,8 @@ clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>" # prior
 clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>   # --body replaces the description, --append-body adds below it; tags must already exist in the space
 clickup-axi tasks edit <id> --parent <task id>                           # make a task a subtask or change its parent; both tasks must be in the same list
 clickup-axi tasks comment <id> --text "<text>"
+clickup-axi tasks close <id>                                             # dry run: preview what closing would change (nothing happens)
+clickup-axi tasks close <id> --yes                                       # close the task - only after the user confirmed the dry run
 clickup-axi setup --global                                               # install the session-start dashboard hook (only after user consent)
 clickup-axi update                                                       # self-update to the latest release (only after user consent)
 ```
@@ -124,6 +126,15 @@ way); create due dates accept the same absolute and signed-offset forms.
 `--parent <task id>` creates a subtask in the parent's list
 with no `--list` needed. The confirmation echoes the created id, list,
 status, and url - use that id for follow-ups.
+
+`tasks close <id>` finishes a task by setting the list's closed-type
+status - you never need to know what the list calls it. It is guarded
+because closing removes the task from every default listing: without
+`--yes` it is a dry run that states the exact status change and writes
+nothing. Show the user that dry run and add `--yes` only after they
+confirm. The confirmation echoes the previous status, so
+`tasks edit <id> --status "<previous>"` reopens a task closed by
+mistake. For a done-but-not-closed status, use `tasks edit --status`.
 
 `tasks` and `search` listings show `id,title,status,due` by default;
 `--fields assignees,priority,tags,list,url` adds columns from the same
