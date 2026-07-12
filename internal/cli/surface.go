@@ -91,6 +91,10 @@ var surface = []command{
 		comment: "create a subtask; the list comes from the parent, no --list needed",
 	},
 	{
+		skill:   `clickup-axi tasks create "<name>"`,
+		comment: "no --list needed once default_list is configured (see config)",
+	},
+	{
 		usage:   "tasks edit <id>",
 		summary: "Change status, assignees, priority, name, due date, description, tags, parent",
 		skill:   `clickup-axi tasks edit <id> --status "<status>"`,
@@ -115,6 +119,21 @@ var surface = []command{
 		usage:   "tasks comment <id>",
 		summary: `Add a comment to a task (--text "<text>")`,
 		skill:   `clickup-axi tasks comment <id> --text "<text>"`,
+	},
+	{
+		usage:   "config",
+		summary: "Show layered defaults and where each value comes from",
+		note:    "(set/unset default_list; flag > env > project > personal; --project writes .clickup-axi.toml at the git root)",
+		skill:   "clickup-axi config",
+		comment: "effective defaults with each value's source",
+	},
+	{
+		skill:   `clickup-axi config set default_list "<list|id>" --space "<space>"`,
+		comment: "make --list optional on tasks create; validates and stores the list id",
+	},
+	{
+		skill:   `clickup-axi config set default_list "folder:<id|name>" --space "<space>" --project`,
+		comment: "sprint folders: each create targets the folder's current list",
 	},
 	{
 		usage:   "auth login",

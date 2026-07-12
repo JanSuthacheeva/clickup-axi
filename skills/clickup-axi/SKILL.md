@@ -67,29 +67,33 @@ pick a workspace on your own.
 ## Commands
 
 ```sh
-clickup-axi                                                              # who am I + workspaces (auth check)
-clickup-axi tasks                                                        # open tasks assigned to the user
-clickup-axi tasks --assignee "<who>" --space "<space>"                   # a teammate's open tasks; names resolve case-insensitively
-clickup-axi tasks --fields assignees,priority                            # extra columns on tasks and search listings: assignees, priority, tags, list, url
-clickup-axi tasks <id>                                                   # one task: metadata, description, newest comments
-clickup-axi tasks <id> --full                                            # complete description and all fetched comments; --fields url adds the task URL
-clickup-axi search "<query>"                                             # find YOUR tasks by words in the title or description
-clickup-axi spaces                                                       # active spaces (projects) available in the workspace
-clickup-axi lists --space "<space>"                                      # Lists in one space, including folder context; names resolve case-insensitively
-clickup-axi lists --space "<space>" --archived                           # archived Lists in the selected space
-clickup-axi search "<query>" --assignee all --space "<space>"            # widen beyond your tasks; space and assignee resolve by name
-clickup-axi search "<query>" --updated-after -1week                      # date bounds accept YYYY-MM-DD or signed day/week offsets
-clickup-axi tasks create "<name>" --list "<list>" --space "<space>"      # create a task; a list name needs --space, a numeric list id works alone
-clickup-axi tasks create "<name>" --list <id> --assignee me --due <date> # due: YYYY-MM-DD or +3days/-1week; --status, --priority, --body "<markdown>", --tag too
-clickup-axi tasks create "<name>" --parent <task id>                     # create a subtask; the list comes from the parent, no --list needed
+clickup-axi                                                                        # who am I + workspaces (auth check)
+clickup-axi tasks                                                                  # open tasks assigned to the user
+clickup-axi tasks --assignee "<who>" --space "<space>"                             # a teammate's open tasks; names resolve case-insensitively
+clickup-axi tasks --fields assignees,priority                                      # extra columns on tasks and search listings: assignees, priority, tags, list, url
+clickup-axi tasks <id>                                                             # one task: metadata, description, newest comments
+clickup-axi tasks <id> --full                                                      # complete description and all fetched comments; --fields url adds the task URL
+clickup-axi search "<query>"                                                       # find YOUR tasks by words in the title or description
+clickup-axi spaces                                                                 # active spaces (projects) available in the workspace
+clickup-axi lists --space "<space>"                                                # Lists in one space, including folder context; names resolve case-insensitively
+clickup-axi lists --space "<space>" --archived                                     # archived Lists in the selected space
+clickup-axi search "<query>" --assignee all --space "<space>"                      # widen beyond your tasks; space and assignee resolve by name
+clickup-axi search "<query>" --updated-after -1week                                # date bounds accept YYYY-MM-DD or signed day/week offsets
+clickup-axi tasks create "<name>" --list "<list>" --space "<space>"                # create a task; a list name needs --space, a numeric list id works alone
+clickup-axi tasks create "<name>" --list <id> --assignee me --due <date>           # due: YYYY-MM-DD or +3days/-1week; --status, --priority, --body "<markdown>", --tag too
+clickup-axi tasks create "<name>" --parent <task id>                               # create a subtask; the list comes from the parent, no --list needed
+clickup-axi tasks create "<name>"                                                  # no --list needed once default_list is configured (see config)
 clickup-axi tasks edit <id> --status "<status>"
-clickup-axi tasks edit <id> --assignee <who> --unassign <who>            # reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id
-clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>" # priority: urgent|high|normal|low|none; due: YYYY-MM-DD, +3days/-1week, or none; fields combine in one call
-clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>   # --body replaces the description, --append-body adds below it; tags must already exist in the space
-clickup-axi tasks edit <id> --parent <task id>                           # make a task a subtask or change its parent; both tasks must be in the same list
+clickup-axi tasks edit <id> --assignee <who> --unassign <who>                      # reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id
+clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>"           # priority: urgent|high|normal|low|none; due: YYYY-MM-DD, +3days/-1week, or none; fields combine in one call
+clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>             # --body replaces the description, --append-body adds below it; tags must already exist in the space
+clickup-axi tasks edit <id> --parent <task id>                                     # make a task a subtask or change its parent; both tasks must be in the same list
 clickup-axi tasks comment <id> --text "<text>"
-clickup-axi setup --global                                               # install the session-start dashboard hook (only after user consent)
-clickup-axi update                                                       # self-update to the latest release (only after user consent)
+clickup-axi config                                                                 # effective defaults with each value's source
+clickup-axi config set default_list "<list|id>" --space "<space>"                  # make --list optional on tasks create; validates and stores the list id
+clickup-axi config set default_list "folder:<id|name>" --space "<space>" --project # sprint folders: each create targets the folder's current list
+clickup-axi setup --global                                                         # install the session-start dashboard hook (only after user consent)
+clickup-axi update                                                                 # self-update to the latest release (only after user consent)
 ```
 
 Task ids may be custom (HGAI-2316, case-insensitive) or internal
@@ -124,6 +128,18 @@ way); create due dates accept the same absolute and signed-offset forms.
 `--parent <task id>` creates a subtask in the parent's list
 with no `--list` needed. The confirmation echoes the created id, list,
 status, and url - use that id for follow-ups.
+
+With a configured `default_list`, `tasks create "<name>"` alone works:
+the confirmation annotates the list with `[default_list: ...]` so you
+see where the task landed. If the user creates tasks in the same list
+repeatedly, suggest `config set default_list` once instead of passing
+`--list` every time; `--project` shares the default with everyone in
+the repository. A `folder:<id|name>` value suits sprint folders - each
+create resolves the folder's current sprint list, so a new sprint
+needs no reconfiguration. `clickup-axi config` shows the effective
+defaults with sources (an explicit flag beats the
+CLICKUP_AXI_DEFAULT_LIST environment variable, which beats the project
+file, which beats the personal file).
 
 `tasks` and `search` listings show `id,title,status,due` by default;
 `--fields assignees,priority,tags,list,url` adds columns from the same

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `config` command and layered defaults: `config` shows the effective
+  values with each one's source, `config set` / `config unset` write
+  them. `default_list` makes `--list` optional on `tasks create`;
+  precedence is explicit flag > `CLICKUP_AXI_DEFAULT_LIST` > project
+  file (`.clickup-axi.toml` at the git root, found from any
+  subdirectory) > personal file (`~/.config/clickup-axi/config.toml`),
+  both flat TOML. `set` validates the value against the API before
+  writing and stores the resolved list id; `--project` targets the
+  committable project file. The `folder:<id|name>` value form points
+  at a sprint folder: every create derives the folder's current list
+  (start/due range containing today, else the newest), so a biweekly
+  sprint rollover needs no reconfiguration. Create confirmations
+  annotate a defaulted list with its provenance, and stale or
+  malformed defaults fail with the config source named and a recovery
+  hint inline.
+
 ## [0.6.0] - 2026-07-12
 
 ### Added

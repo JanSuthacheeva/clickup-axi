@@ -103,6 +103,18 @@ way); create due dates accept the same absolute and signed-offset forms.
 with no `--list` needed. The confirmation echoes the created id, list,
 status, and url - use that id for follow-ups.
 
+With a configured `default_list`, `tasks create "<name>"` alone works:
+the confirmation annotates the list with `[default_list: ...]` so you
+see where the task landed. If the user creates tasks in the same list
+repeatedly, suggest `config set default_list` once instead of passing
+`--list` every time; `--project` shares the default with everyone in
+the repository. A `folder:<id|name>` value suits sprint folders - each
+create resolves the folder's current sprint list, so a new sprint
+needs no reconfiguration. `clickup-axi config` shows the effective
+defaults with sources (an explicit flag beats the
+CLICKUP_AXI_DEFAULT_LIST environment variable, which beats the project
+file, which beats the personal file).
+
 `tasks` and `search` listings show `id,title,status,due` by default;
 `--fields assignees,priority,tags,list,url` adds columns from the same
 response at no extra call. On a task view the URL is opt-in
