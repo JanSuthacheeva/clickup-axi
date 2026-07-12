@@ -196,7 +196,18 @@ func cmdTasksList(args []string, c *clickup.Client, out io.Writer) int {
 		t := &tasks[i]
 		fmt.Fprintf(out, "  %s,%s,%s,%s\n", displayID(t), output.ToonCell(t.Name), output.ToonCell(t.Status.Status), t.DueDate.Date())
 	}
-	output.WriteHelp(out, "Run `clickup-axi tasks <id>` for details and comments")
+	help := []string{"Run `clickup-axi tasks <id>` for details and comments"}
+	if suffix != "" && space == "" {
+		// A truncated listing needs a way past the page; there is no
+		// paging flag, so narrowing is the sanctioned route (carrying
+		// the assignee filter forward).
+		cmd := "clickup-axi tasks --space \"<name>\""
+		if assignee != "me" {
+			cmd = fmt.Sprintf("clickup-axi tasks --assignee %q --space \"<name>\"", assignee)
+		}
+		help = append(help, fmt.Sprintf("Run `%s` to narrow the listing to one project", cmd))
+	}
+	output.WriteHelp(out, help...)
 	return 0
 }
 

@@ -96,6 +96,11 @@ func TestTasksFullPageHintsAtMore(t *testing.T) {
 	if !strings.Contains(out, "(first page; more may exist)") {
 		t.Errorf("full page must state that more may exist\noutput:\n%s", out)
 	}
+	// Stating truncation without a way past it strands the agent: the
+	// sanctioned way below one page is narrowing to a space.
+	if !strings.Contains(out, "Run `clickup-axi tasks --space \"<name>\"` to narrow the listing to one project") {
+		t.Errorf("full page must hint at narrowing with --space\noutput:\n%s", out)
+	}
 }
 
 func (f *fakeClickUp) spaces(t *testing.T, teamID, spacesJSON string) {
