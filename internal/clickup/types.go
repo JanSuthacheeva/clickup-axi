@@ -37,6 +37,19 @@ func (m MsEpoch) InstantDate() string {
 	return m.format(false)
 }
 
+// Millis returns the raw epoch milliseconds; false when the value is
+// unset or not numeric.
+func (m MsEpoch) Millis() (int64, bool) {
+	if m == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(string(m), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return n, true
+}
+
 func (m MsEpoch) format(local bool) string {
 	if m == "" {
 		return ""

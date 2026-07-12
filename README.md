@@ -52,6 +52,8 @@ clickup-axi lists --space "Webshop"  # Lists in a project, with folder context
 clickup-axi tasks create "Fix login flow" --list "Sprint 12" --space "Webshop"
 clickup-axi tasks create "Fix login flow" --list 901234 --priority high --assignee me
 clickup-axi tasks create "Test the redirect" --parent HGAI-2316   # subtask, list comes from the parent
+clickup-axi config set default_list "Sprint 12" --space "Webshop"  # make --list optional on create
+clickup-axi tasks create "Fix login flow"                          # lands in the default list
 clickup-axi tasks edit HGAI-2316 --status "in review"
 clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me   # reassign (names resolve)
 clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01   # multi-field edit, one atomic call
@@ -99,6 +101,33 @@ clickup-axi search migration --assignee all --updated-after 2026-05-01
 clickup-axi search migration --updated-after -1week
 ```
 
+## Default list
+
+`tasks create` needs a target list. Instead of passing `--list` every
+time, configure it once:
+
+```sh
+clickup-axi config                                                      # effective defaults + sources
+clickup-axi config set default_list 901808169633                        # personal (~/.config/clickup-axi/config.toml)
+clickup-axi config set default_list "Sprint 44" --space Dev --project   # shared (.clickup-axi.toml at the git root)
+clickup-axi config set default_list "folder:Sprints" --space Dev        # sprint folder: resolves per create
+clickup-axi config unset default_list
+```
+
+Precedence: an explicit `--list` beats `CLICKUP_AXI_DEFAULT_LIST`,
+which beats the project file (found by walking up from the working
+directory, so it works from any subdirectory), which beats the
+personal file. The file is flat TOML (`default_list = "901808169633"`).
+
+`set` validates against the API before writing and stores the resolved
+list id, never an ambiguous name. For teams on a sprint cadence the
+`folder:<id|name>` form points at the sprint folder instead of one
+list: every create derives the folder's *current* list (the one whose
+start/due range contains today, else the newest), so a new sprint
+needs no reconfiguration. Create confirmations annotate a defaulted
+list with `[default_list: env|project|personal]`, and any stale
+default fails with the config source named and a one-step fix inline.
+
 ## Session hook
 
 `clickup-axi setup --global` registers a session-start hook in every
@@ -129,6 +158,7 @@ clickup-axi setup --global --remove
 |---|---|---|
 | `CLICKUP_TOKEN` | API token to use; takes precedence over the token stored by `auth login`. | unset - the stored token is used |
 | `CLICKUP_AXI_WORKSPACE` | Pin the workspace (id from `clickup-axi`) that `tasks` and custom-id resolution operate in. Required once the token sees more than one workspace; a pin the token cannot see is an error listing the visible ones. | unset - the single visible workspace is used |
+| `CLICKUP_AXI_DEFAULT_LIST` | Default list for `tasks create` when `--list` is omitted: a list id or `folder:<id>`. Overrides both config files; an explicit `--list` still wins. | unset - config files are consulted |
 | `CLICKUP_AXI_CUSTOM_IDS` | Resolve task ids as custom ids (`HGAI-2316`) only, skipping the internal-id attempt, and display custom ids everywhere. Any value except `0` or `false` enables it. | unset - internal ids tried first, custom fallback |
 | `CLICKUP_AXI_NO_UPDATE_CHECK` | Disable everything update-related: the passive daily check, the `update:` notice, and skill-copy healing. Any non-empty value. | unset - update checks enabled |
 
