@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tasks <id>` now includes task hierarchy: a subtask shows its immediate
+  parent's id, title, and status, while every detail view reports either a
+  compact `subtasks[N]{id,title,status}` table of direct children or an
+  explicit zero-subtasks state. The relationship fetch is detail-only,
+  nested descendants stay out of the default view, and forced custom-id
+  workspaces never leak internal relationship ids.
 - `tasks move <id> --list <name|id>` moves a task to another list via
   ClickUp's v3 move endpoint (one atomic call; memberships in
   additional lists are untouched and subtasks move with their parent).

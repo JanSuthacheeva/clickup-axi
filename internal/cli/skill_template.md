@@ -2,7 +2,8 @@
 name: clickup-axi
 description: >
   Manage ClickUp tasks via the clickup-axi CLI - list tasks assigned to
-  the user, view a task with its comments and description by id, create
+  the user, view a task with its parent, direct subtasks, comments, and
+  description by id, create
   a task or subtask in a List, change a task's status, assignees,
   priority, due date, name, description, or tags, add a comment to a
   task, move a task to another List, or discover a ClickUp space or
@@ -93,6 +94,10 @@ ClickUp. Every invalid field is reported together with the others
 before anything is written - fix them all and retry once. Re-applying
 the current state (same status, same assignees, existing tag) is a
 stated no-op.
+
+`tasks <id>` includes the immediate parent's id, title, and status when
+the task is a subtask, plus a compact table of its direct subtasks. Nested
+descendants are left to their own detail views.
 
 `tasks create "<name>" --list "<list>"` makes a new task. A list name
 needs `--space "<project>"` because list names are only unique within

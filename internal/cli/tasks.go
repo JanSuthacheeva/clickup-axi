@@ -15,7 +15,8 @@ const tasksHelp = `clickup-axi tasks [id | create "<name>" | edit <id> | comment
 Without arguments: open tasks assigned to you in your workspace,
 including subtasks. --assignee lists a teammate's open tasks instead;
 --space narrows the listing to one space (project).
-With an id: that task's details and newest comments. Internal ids
+With an id: that task's details, parent, direct subtasks, and newest
+comments. Internal ids
 (86ey3tx8m) and custom ids (HGAI-2316) both work: the id is tried as
 internal first, then as custom. Set CLICKUP_AXI_CUSTOM_IDS=1 to skip
 the internal attempt when your workspace always uses custom ids.
