@@ -70,8 +70,9 @@ pick a workspace on your own.
 clickup-axi                                                              # who am I + workspaces (auth check)
 clickup-axi tasks                                                        # open tasks assigned to the user
 clickup-axi tasks --assignee "<who>" --space "<space>"                   # a teammate's open tasks; names resolve case-insensitively
+clickup-axi tasks --fields assignees,priority                            # extra columns on tasks and search listings: assignees, priority, tags, list, url
 clickup-axi tasks <id>                                                   # one task: metadata, description, newest comments
-clickup-axi tasks <id> --full                                            # complete description and all fetched comments
+clickup-axi tasks <id> --full                                            # complete description and all fetched comments; --fields url adds the task URL
 clickup-axi search "<query>"                                             # find YOUR tasks by words in the title or description
 clickup-axi spaces                                                       # active spaces (projects) available in the workspace
 clickup-axi lists --space "<space>"                                      # Lists in one space, including folder context; names resolve case-insensitively
@@ -103,6 +104,11 @@ inlined. Every invalid field is reported together with the others
 before anything is written - fix them all and retry once. Re-applying
 the current state (same status, same assignees, existing tag) is a
 stated no-op.
+
+`tasks` and `search` listings show `id,title,status,due` by default;
+`--fields assignees,priority,tags,list,url` adds columns from the same
+response at no extra call. On a task view the URL is opt-in
+(`--fields url`); everything else is already shown.
 
 `tasks` and `search` cover your own tasks by default; `--assignee`
 targets a teammate instead. Before widening with `--assignee all`, ask

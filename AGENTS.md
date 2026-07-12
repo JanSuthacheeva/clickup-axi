@@ -132,6 +132,14 @@ instead).
   requires at least one bounding filter. `tasks` (the list form) shares
   `--assignee`/`--space` with the same resolvers, and its
   `--assignee all` requires `--space` as the bound.
+- `tasks`, `search`, and the task detail view share the additive
+  `--fields` vocabulary (`internal/cli/fields.go`: assignees, priority,
+  tags, list, url). Columns render from the response already fetched,
+  unknown names aggregate into one exit-2 usage error before any API
+  call, and names already in the schema are silent no-ops. The detail
+  view omits `url:` unless `--fields url` asks for it. `spaces`/`lists`
+  have no `--fields`: their schemas already show every field the
+  adapter carries.
 - After a task is fetched, follow-up API calls use the internal id from
   the response.
 - Rate limit is roughly 100 requests/minute; the client retries a GET

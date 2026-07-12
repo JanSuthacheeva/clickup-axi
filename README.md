@@ -11,7 +11,7 @@ A minimal ClickUp CLI for AI agents, following the [AXI](https://axi.md)
 design principles: token-efficient output, structured errors, and
 next-step hints on every command. It covers the flows agents need most:
 listing open tasks (yours or a teammate's, paged past 100 with
---page), finding a task by words in
+--page, extra columns with --fields), finding a task by words in
 its title or description, viewing one task with its comments, editing
 its status, assignees, priority, due date, name, description, or tags,
 commenting on it, and discovering the spaces and Lists to target.
@@ -42,6 +42,7 @@ HGAI-2316") - or run the CLI directly:
 clickup-axi                          # who am I + workspaces
 clickup-axi tasks                    # your open tasks
 clickup-axi tasks --assignee ting    # a teammate's open tasks (names resolve)
+clickup-axi tasks --fields assignees,priority   # extra columns, no extra API calls
 clickup-axi tasks HGAI-2316          # one task with newest comments
 clickup-axi search "oauth redirect"  # find your tasks by title/description text
 clickup-axi spaces                   # active projects in the workspace

@@ -115,7 +115,7 @@ func TestTopHelpGolden(t *testing.T) {
 
 commands:
   tasks                    List open tasks (yours by default)
-                           (--assignee <who> for a teammate, --space <name|id> to narrow, --page N for more)
+                           (--assignee <who> for a teammate, --space to narrow, --page N for more, --fields for extra columns)
   tasks <id>               Show one task with its newest comments
                            (internal id like 86ey3tx8m or custom like HGAI-2316)
   search "<query>"         Find your tasks by words in the title or description
