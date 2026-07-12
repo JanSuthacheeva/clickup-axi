@@ -35,8 +35,13 @@ func TestContextShowsCappedDueSortedDashboard(t *testing.T) {
 	if !strings.Contains(out, contextHeader) {
 		t.Errorf("missing discovery header\noutput:\n%s", out)
 	}
-	if !strings.Contains(out, "tasks[5/6]{id,title,status,due}:") {
+	// The array header carries the row count only; the total lives in
+	// the help hint (AXI: never encode pagination into TOON headers).
+	if !strings.Contains(out, "tasks[5]{id,title,status,due}:") {
 		t.Errorf("missing capped header\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "tasks[5/") {
+		t.Errorf("pagination leaked into the TOON array header\noutput:\n%s", out)
 	}
 	// Due-soonest first, no-due tail in stable order; the 6th task is cut.
 	idx := func(s string) int { return strings.Index(out, s) }
