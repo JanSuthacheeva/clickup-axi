@@ -32,8 +32,8 @@ flags:
   --space <name|id>        only tasks in this space (project); names
                            resolve case-insensitively
   --list <id>              only tasks in this list
-  --updated-after  <date>  updated on/after YYYY-MM-DD
-  --updated-before <date>  updated before YYYY-MM-DD
+  --updated-after  <date>  updated on/after YYYY-MM-DD or +3days/-1week
+  --updated-before <date>  updated before YYYY-MM-DD or +3days/-1week
   --include-closed         include tasks in the final closed status
   --limit N                most results to show (default 10)
   --fields <names>         add columns to the results (comma-separated);
@@ -76,8 +76,10 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 			flag := args[i]
 			i++
 			// A flag-shaped next token is a missing value, not a value
-			// (none of these flags takes free text).
-			if i >= len(args) || strings.HasPrefix(args[i], "-") {
+			// (none takes free text). Date flags carve out a recognized
+			// negative relative offset such as -1week.
+			dateFlag := flag == "--updated-after" || flag == "--updated-before"
+			if i >= len(args) || (strings.HasPrefix(args[i], "-") && !(dateFlag && relativeDue.MatchString(args[i]))) {
 				output.WriteError(out, fmt.Sprintf("%s needs a value", flag),
 					"Run `clickup-axi search \"<query>\" "+flag+" <value>`")
 				return 2
@@ -102,9 +104,11 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 			case "--list":
 				list = val
 			case "--updated-after", "--updated-before":
-				ms, ok := parseSearchDate(val)
+				// UTC is enough for the grammar gate. Relative values are
+				// re-resolved in the workspace zone after all local checks.
+				ms, ok := parseSearchDate(val, time.UTC)
 				if !ok {
-					output.WriteError(out, fmt.Sprintf("%s needs a date as YYYY-MM-DD, got %q", flag, val))
+					output.WriteError(out, fmt.Sprintf("%s needs a date as YYYY-MM-DD or a relative +3days / -1week, got %q", flag, val))
 					return 2
 				}
 				if flag == "--updated-after" {
@@ -161,6 +165,16 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 	extra, unknown := resolveTaskFields(fieldTokens, []string{"id", "title", "status", "match", "due"})
 	if len(unknown) > 0 {
 		return renderUnknownFields(out, unknown, "Run `clickup-axi search \"<query>\" --fields assignees,priority`")
+	}
+
+	if relativeDue.MatchString(updatedAfter) || relativeDue.MatchString(updatedBefore) {
+		loc := c.DateLocation()
+		if relativeDue.MatchString(updatedAfter) {
+			dateUpdatedGt, _ = parseSearchDate(updatedAfter, loc)
+		}
+		if relativeDue.MatchString(updatedBefore) {
+			dateUpdatedLt, _ = parseSearchDate(updatedBefore, loc)
+		}
 	}
 
 	team, err := c.SelectTeam()
@@ -256,9 +270,15 @@ func resolveAssignee(assignee string, team *clickup.Team, c *clickup.Client) (*c
 	return team.ResolveMember(assignee)
 }
 
-// parseSearchDate accepts a YYYY-MM-DD date and returns its UTC
-// millisecond epoch, matching how tasks render due/updated dates.
-func parseSearchDate(s string) (int64, bool) {
+// parseSearchDate accepts YYYY-MM-DD or a signed day/week offset and
+// returns the selected calendar date at midnight UTC. Relative values
+// resolve today in loc first, so host and workspace timezones may differ
+// without changing the intended date boundary.
+func parseSearchDate(s string, loc *time.Location) (int64, bool) {
+	if n, ok := relativeDays(s); ok {
+		y, mo, d := timeNow().In(loc).Date()
+		return time.Date(y, mo, d, 0, 0, 0, 0, time.UTC).AddDate(0, 0, n).UnixMilli(), true
+	}
 	tm, err := time.Parse("2006-01-02", s)
 	if err != nil {
 		return 0, false

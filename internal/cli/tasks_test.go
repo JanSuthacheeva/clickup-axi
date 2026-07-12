@@ -31,6 +31,16 @@ func (f *fakeClickUp) timezone(t *testing.T, name string) {
 	})
 }
 
+func (f *fakeClickUp) meInTimezone(t *testing.T, id int64, username, timezone string) {
+	t.Helper()
+	f.mux.HandleFunc("GET /api/v2/user", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"user": {"id": %d, "username": %q, "timezone": %q}}`, id, username, timezone)
+	})
+	f.mux.HandleFunc("GET /api/v2/team", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"teams": [{"id": "9018", "name": "Buzzwoo"}]}`))
+	})
+}
+
 const twoTeamsJSON = `{"teams": [{"id": "9001", "name": "BUZZWOO"}, {"id": "9002", "name": "Personal"}]}`
 
 func TestTasksListsOpenAssignedTasks(t *testing.T) {
