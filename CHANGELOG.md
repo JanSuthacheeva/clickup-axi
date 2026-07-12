@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `--fields` adds columns to `tasks` and `search` listings on request
+  (`assignees`, `priority`, `tags`, `list`, `url`), rendered from the
+  response already fetched - no extra API calls. The flag is additive
+  on top of the default schema, repeatable and comma-separated, and
+  shared with the task view, where fields already shown are silently
+  absorbed. Unknown names fail before any API call with the vocabulary
+  inlined.
 - `spaces` lists the active spaces in the selected workspace. `lists
   --space <name|id>` discovers active Lists in one space, including
   folder context to distinguish duplicate names; `--archived` instead
@@ -30,6 +37,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hard 5-second budget. It always exits 0 and degrades to a one-line
   reason (not authenticated, workspace unpinned, API unreachable) so a
   broken network can never break a session start.
+
+### Changed
+
+- **Breaking:** the task view no longer prints `url:` by default -
+  agents almost never browse. Opt back in with `--fields url`.
 
 ## [0.5.0] - 2026-07-10
 
