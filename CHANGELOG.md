@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `tasks close <id>` closes a task by setting the list's closed-type
+  status (no need to know its name). As the first destructive op it is
+  guarded: without `--yes` it is a dry run stating the exact status
+  change and writing nothing; the binary never prompts, so the agent
+  relays the dry run and adds `--yes` only after the user confirms.
+  Already-closed is a stated no-op, and the confirmation echoes the
+  previous status as a one-step reopen hint via `tasks edit --status`.
 - `config` command and layered defaults: `config` shows the effective
   values with each one's source, `config set` / `config unset` write
   them. `default_list` makes `--list` optional on `tasks create`;
