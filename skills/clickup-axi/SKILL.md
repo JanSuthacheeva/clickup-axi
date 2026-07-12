@@ -1,17 +1,12 @@
 ---
 name: clickup-axi
 description: >
-  Manage ClickUp tasks via the clickup-axi CLI - list tasks assigned to
-  the user, view a task with its parent, direct subtasks, comments, and
-  description by id, create
-  a task or subtask in a List, change a task's status, assignees,
-  priority, due date, name, description, or tags, add a comment to a
-  task, move a task to another List, or discover a ClickUp space or
-  List. Use when the user mentions ClickUp, sprint tasks, tickets with
-  ids like HGAI-2316 or ECOM-2254, asks what is on their plate, or wants
-  a task created, looked up, summarized, commented on, reassigned,
-  retitled, reprioritized, rescheduled, tagged, or moved to another
-  status, List, or sprint.
+  Manage ClickUp via the clickup-axi CLI: list, search, view, create,
+  edit, comment on, move, and close tasks, and discover spaces and
+  Lists. Use when the user mentions ClickUp, sprint tasks, or ticket
+  ids like HGAI-2316 or ECOM-2254, asks what is on their plate, or
+  wants a task created, looked up, summarized, updated, commented on,
+  or moved to another status, List, or sprint.
 user-invocable: false
 author: Jan Suthacheeva
 metadata:
@@ -54,146 +49,97 @@ the user the release page URL and ask them to install it themselves.
 
 ## Workspace setup
 
-Run `clickup-axi` (no arguments) before the first task command. If it
-lists several workspaces and no `workspace:` line, ask the user which
-one to use, persist `CLICKUP_AXI_WORKSPACE=<id>` where they prefer
-(shell profile, or the agent's environment config), and export it for
-the current session. One workspace, or a `workspace:` line present:
-no setup needed.
-
-Any command may fail with "N workspaces are visible; set
-CLICKUP_AXI_WORKSPACE to one of: ..." - for example after the user
-joins another workspace. Handle it the same way: ask the user, never
-pick a workspace on your own.
+Run `clickup-axi` (no arguments) before the first task command. One
+workspace visible, or a `workspace:` line present: no setup needed.
+If several workspaces show without a `workspace:` line - or any
+command fails with "N workspaces are visible; set
+CLICKUP_AXI_WORKSPACE to one of: ..." - ask the user which workspace
+to use (never pick one yourself), persist
+`CLICKUP_AXI_WORKSPACE=<id>` where they prefer (shell profile, or the
+agent's environment config), and export it for the current session.
 
 ## Commands
 
 ```sh
-clickup-axi                                                                        # who am I + workspaces (auth check)
-clickup-axi tasks                                                                  # open tasks assigned to the user
-clickup-axi tasks --assignee "<who>" --space "<space>"                             # a teammate's open tasks; names resolve case-insensitively
-clickup-axi tasks --fields assignees,priority                                      # extra columns on tasks and search listings: assignees, priority, tags, list, url
-clickup-axi tasks <id>                                                             # one task: metadata, parent, direct subtasks, description, newest comments
-clickup-axi tasks <id> --full                                                      # complete description and all fetched comments; --fields url adds the task URL
-clickup-axi search "<query>"                                                       # find YOUR tasks by words in the title or description
-clickup-axi spaces                                                                 # active spaces (projects) available in the workspace
-clickup-axi lists --space "<space>"                                                # Lists in one space, including folder context; names resolve case-insensitively
-clickup-axi lists --space "<space>" --archived                                     # archived Lists in the selected space
-clickup-axi search "<query>" --assignee all --space "<space>"                      # widen beyond your tasks; space and assignee resolve by name
-clickup-axi search "<query>" --updated-after -1week                                # date bounds accept YYYY-MM-DD or signed day/week offsets
-clickup-axi tasks create "<name>" --list "<list>" --space "<space>"                # create a task; a list name needs --space, a numeric list id works alone
-clickup-axi tasks create "<name>" --list <id> --assignee me --due <date>           # due: YYYY-MM-DD or +3days/-1week; --status, --priority, --body "<markdown>", --tag too
-clickup-axi tasks create "<name>" --parent <task id>                               # create a subtask; the list comes from the parent, no --list needed
-clickup-axi tasks create "<name>"                                                  # no --list needed once default_list is configured (see config)
+clickup-axi  # who am I + workspaces (auth check)
+clickup-axi tasks  # open tasks assigned to the user
+clickup-axi tasks --assignee "<who>" --space "<space>"  # a teammate's open tasks; names resolve case-insensitively
+clickup-axi tasks --fields assignees,priority  # extra columns on tasks and search listings: assignees, priority, tags, list, url
+clickup-axi tasks <id>  # one task: metadata, parent, direct subtasks, description, newest comments
+clickup-axi tasks <id> --full  # complete description and all fetched comments; --fields url adds the task URL
+clickup-axi search "<query>"  # find YOUR tasks by words in the title or description
+clickup-axi spaces  # active spaces (projects) available in the workspace
+clickup-axi lists --space "<space>"  # Lists in one space, with folder context; --archived shows archived Lists instead
+clickup-axi search "<query>" --assignee all --space "<space>"  # widen beyond your tasks; space and assignee resolve by name
+clickup-axi search "<query>" --updated-after -1week  # date bounds accept YYYY-MM-DD or signed day/week offsets
+clickup-axi tasks create "<name>" --list "<list>" --space "<space>"  # create a task; with a configured default_list, --list is optional
+clickup-axi tasks create "<name>" --list <id> --assignee me --due <date>  # --status, --priority, --body "<markdown>", --tag work too
+clickup-axi tasks create "<name>" --parent <task id>  # create a subtask; the list comes from the parent, no --list needed
 clickup-axi tasks edit <id> --status "<status>"
-clickup-axi tasks edit <id> --assignee <who> --unassign <who>                      # reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id
-clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>"           # priority: urgent|high|normal|low|none; due: YYYY-MM-DD, +3days/-1week, or none; fields combine in one call
-clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>             # --body replaces the description, --append-body adds below it; tags must already exist in the space
-clickup-axi tasks edit <id> --parent <task id>                                     # make a task a subtask or change its parent; both tasks must be in the same list
+clickup-axi tasks edit <id> --assignee <who> --unassign <who>  # reassign; --assignee/--unassign are repeatable and comma-separated; who = me | name | id
+clickup-axi tasks edit <id> --priority <p> --due <date> --name "<title>"  # priority: urgent|high|normal|low|none; due: YYYY-MM-DD, +3days/-1week, or none; fields combine in one call
+clickup-axi tasks edit <id> --append-body "<markdown>" --add-tag <tag>  # --body replaces the description, --append-body adds below it; tags must already exist in the space
+clickup-axi tasks edit <id> --parent <task id>  # make a task a subtask or change its parent; both tasks must be in the same list
 clickup-axi tasks comment <id> --text "<text>"
-clickup-axi tasks move <id> --list "<list>" --space "<space>"                      # move a task to another list; a list name needs --space, a numeric list id works alone
-clickup-axi tasks move <id> --list <id> --status "<status>"                        # --status is only for a target list that lacks the task's status; the error echoes valid ones
-clickup-axi tasks close <id>                                                       # dry run: preview what closing would change (nothing happens)
-clickup-axi tasks close <id> --yes                                                 # close the task - only after the user confirmed the dry run
-clickup-axi config                                                                 # effective defaults with each value's source
-clickup-axi config set default_list "<list|id>" --space "<space>"                  # make --list optional on tasks create; validates and stores the list id
-clickup-axi config set default_list "folder:<id|name>" --space "<space>" --project # sprint folders: each create targets the folder's current list
-clickup-axi setup --global                                                         # install the session-start dashboard hook (only after user consent)
-clickup-axi update                                                                 # self-update to the latest release (only after user consent)
+clickup-axi tasks move <id> --list "<list>" --space "<space>"  # move a task to another list; a list name needs --space, a numeric list id works alone
+clickup-axi tasks move <id> --list <id> --status "<status>"  # --status is only for a target list that lacks the task's status; the error echoes valid ones
+clickup-axi tasks close <id>  # dry run: preview what closing would change (nothing happens)
+clickup-axi tasks close <id> --yes  # close the task - only after the user confirmed the dry run
+clickup-axi config  # effective defaults with each value's source
+clickup-axi config set default_list "<list|id|folder:...>" --space "<space>"  # default for tasks create; folder:<id|name> tracks a sprint folder's current list; --project shares it via the repo
+clickup-axi setup --global  # install the session-start dashboard hook (only after user consent)
+clickup-axi update  # self-update to the latest release (only after user consent)
 ```
 
+## Field rules
+
 Task ids may be custom (HGAI-2316, case-insensitive) or internal
-(86ey3tx8m). An invalid status fails with the list's valid statuses
-echoed inline - pick one and retry once.
+(86ey3tx8m). Names - spaces, Lists, members, tags - resolve
+case-insensitively; a List name needs `--space` (list names are only
+unique within one space), while a numeric list id works alone
+(discover ids with `lists`). Dates accept YYYY-MM-DD or signed
+offsets (+3days, -1week) resolved in the workspace timezone; `--due`
+also accepts none to clear.
 
-`tasks edit` changes any field and they combine freely in one call:
-`--assignee <who>` adds and `--unassign <who>` removes people (both
-repeatable and comma-separated; `<who>` is `me`, a member name, or an
-id), `--priority urgent|high|normal|low|none` (none clears),
-`--due YYYY-MM-DD`, `--due +3days`, `--due -1week`, or `--due none`
-(offsets resolve from today in the ClickUp workspace timezone),
-`--name "<title>"`, and
-`--body "<markdown>"` replaces the description while
-`--append-body "<markdown>"` adds below it (prefer append when the
-existing description should survive). `--add-tag`/`--remove-tag` take
-existing space tags only; an unknown tag fails with the space's tags
-inlined. `--parent <task id>` makes a task a subtask or moves a subtask
-under another parent in the same list. ClickUp's API cannot clear a
-parent, so promoting a subtask to a standalone task must be done in
-ClickUp. Every invalid field is reported together with the others
-before anything is written - fix them all and retry once. Re-applying
-the current state (same status, same assignees, existing tag) is a
-stated no-op.
+A wrong value (status, member, space, tag, priority, date) fails with
+the valid options inlined, every invalid field is reported together,
+and nothing is written until all fields pass - fix them all and retry
+once. Re-applying the current state is a stated no-op. A create
+confirmation echoes the new id; use it for follow-ups.
 
-`tasks <id>` includes the immediate parent's id, title, and status when
-the task is a subtask, plus a compact table of its direct subtasks. Nested
-descendants are left to their own detail views.
+`tasks edit` combines any fields in one call. Prefer `--append-body`
+over `--body` when the existing description should survive. ClickUp's
+API cannot clear a parent, so promoting a subtask to a standalone
+task must be done in ClickUp.
 
-`tasks create "<name>" --list "<list>"` makes a new task. A list name
-needs `--space "<project>"` because list names are only unique within
-one space; a numeric list id works alone (discover ids with `lists`).
-The edit field flags also work at creation (`--status`, `--assignee`,
-`--priority`, `--due`, `--body`, `--tag` - validated together the same
-way); create due dates accept the same absolute and signed-offset forms.
-`--parent <task id>` creates a subtask in the parent's list
-with no `--list` needed. The confirmation echoes the created id, list,
-status, and url - use that id for follow-ups.
+`tasks close` is guarded because a closed task leaves every default
+listing: without `--yes` it is a dry run stating the exact status
+change. Show the user the dry run and add `--yes` only after they
+confirm; the confirmation echoes the previous status, so
+`tasks edit <id> --status "<previous>"` reopens a mistake. For a
+done-but-not-closed status use `tasks edit --status`.
 
-With a configured `default_list`, `tasks create "<name>"` alone works:
-the confirmation annotates the list with `[default_list: ...]` so you
-see where the task landed. The first time a create fails because no
-list is set, resolve the list for the task at hand, then offer to
-save it as the default: propose
-`config set default_list ... --project` when working inside a
+## Searching and listing
+
+`tasks` and `search` cover your own open tasks by default. Before
+widening with `--assignee all`, ask the user which project (space)
+the task is in - people nearly always know - then bound with
+`--space "<name>"`. Time references like "two months ago" are fuzzy:
+use a generous `--updated-after`/`--updated-before` window or only
+one end, and remember tasks from past work are often in the final
+closed status (`--include-closed`).
+
+## Default list
+
+With a configured `default_list`, `tasks create "<name>"` alone
+works. The first time a create fails because no list is set, resolve
+the list for the task at hand, then offer to save it as the default:
+propose `config set default_list ... --project` when working inside a
 repository (it writes a committable `.clickup-axi.toml` the whole
 team shares), otherwise the personal default. Only run `config set`
-after the user agrees, and do not ask again once they decline.
-A `folder:<id|name>` value suits sprint folders - each
-create resolves the folder's current sprint list, so a new sprint
-needs no reconfiguration. `clickup-axi config` shows the effective
-defaults with sources (an explicit flag beats the
-CLICKUP_AXI_DEFAULT_LIST environment variable, which beats the project
-file, which beats the personal file).
-
-`tasks move <id> --list "<list>"` moves a task to another List (for
-example into the current sprint). Like create, a list name needs
-`--space` and a numeric id works alone. The task keeps its status when
-the target List has it; otherwise the move fails with the target's
-statuses inlined - pick one and retry with `--status "<status>"`. A
-move is easily undone: the confirmation shows the previous List with
-its id, so moving back is one command.
-
-`tasks close <id>` finishes a task by setting the list's closed-type
-status - you never need to know what the list calls it. It is guarded
-because closing removes the task from every default listing: without
-`--yes` it is a dry run that states the exact status change and writes
-nothing. Show the user that dry run and add `--yes` only after they
-confirm. The confirmation echoes the previous status, so
-`tasks edit <id> --status "<previous>"` reopens a task closed by
-mistake. For a done-but-not-closed status, use `tasks edit --status`.
-
-`tasks` and `search` listings show `id,title,status,due` by default;
-`--fields assignees,priority,tags,list,url` adds columns from the same
-response at no extra call. On a task view the URL is opt-in
-(`--fields url`); everything else is already shown.
-
-`tasks` and `search` cover your own tasks by default; `--assignee`
-targets a teammate instead. Before widening with `--assignee all`, ask
-the user which project (space) the task is in - people nearly always
-know - then bound with `--space "<name>"`. Space and assignee names
-resolve case-insensitively; a wrong name fails with the valid options
-inlined, so pick one and retry once. Time references like "two months
-ago" are fuzzy - use a generous `--updated-after`/`--updated-before`
-window or only one end, and remember tasks from past work are often in
-the final closed status (`--include-closed`).
-`--updated-after` and `--updated-before` accept either `YYYY-MM-DD` or
-signed day/week offsets such as `-1week`, resolved from today in the
-ClickUp workspace timezone.
-
-`spaces` lists the active projects in the selected workspace. Use
-`lists --space "<name|id>"` to discover the Lists in one project before
-creating or moving work; its folder column distinguishes duplicate List
-names. Use `--archived` only when the user needs archived Lists.
+after the user agrees, and do not ask again once they decline. A
+`folder:<id|name>` value tracks a sprint folder's current list, so a
+new sprint needs no reconfiguration.
 
 ## Session hook
 
