@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
@@ -82,8 +83,8 @@ func cmdTaskCreate(args []string, c *clickup.Client, out io.Writer) int {
 			r.prioritySet = true
 		case "--due":
 			i++
-			if i >= len(args) || strings.HasPrefix(args[i], "-") {
-				output.WriteError(out, "--due needs a value", "Run `clickup-axi tasks create \"<name>\" --list \"<list|id>\" --due <YYYY-MM-DD>`")
+			if i >= len(args) || (strings.HasPrefix(args[i], "-") && !relativeDue.MatchString(args[i])) {
+				output.WriteError(out, "--due needs a value", "Run `clickup-axi tasks create \"<name>\" --list \"<list|id>\" --due <YYYY-MM-DD|+3days>`")
 				return 2
 			}
 			r.due = args[i]
@@ -170,14 +171,17 @@ func cmdTaskCreate(args []string, c *clickup.Client, out io.Writer) int {
 	}
 	var due int64
 	if r.dueSet {
-		if d, ok := parseDue(r.due); ok {
+		if d, ok := parseDue(r.due, time.UTC); ok {
 			due = d // "none" parses to 0 = unset, the create default
 		} else {
-			usageErrs = append(usageErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01)", r.due))
+			usageErrs = append(usageErrs, fmt.Sprintf("due %q is not a date\n  valid: YYYY-MM-DD (e.g. 2026-08-01) or a relative +3days / -1week", r.due))
 		}
 	}
 	if len(usageErrs) > 0 {
 		return renderFieldReport(out, usageErrs, 2, "created", createRerun)
+	}
+	if r.dueSet && relativeDue.MatchString(r.due) {
+		due, _ = parseDue(r.due, c.DateLocation())
 	}
 
 	// The workspace is only fetched when a field actually resolves

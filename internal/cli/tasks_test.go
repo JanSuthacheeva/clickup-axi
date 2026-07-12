@@ -24,6 +24,13 @@ func (f *fakeClickUp) meWithTeams(t *testing.T, id int64, username, teamsJSON st
 	})
 }
 
+func (f *fakeClickUp) timezone(t *testing.T, name string) {
+	t.Helper()
+	f.mux.HandleFunc("GET /api/v2/user", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"user": {"timezone": %q}}`, name)
+	})
+}
+
 const twoTeamsJSON = `{"teams": [{"id": "9001", "name": "BUZZWOO"}, {"id": "9002", "name": "Personal"}]}`
 
 func TestTasksListsOpenAssignedTasks(t *testing.T) {

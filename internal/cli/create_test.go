@@ -139,6 +139,29 @@ func TestTaskCreateFullFieldsByListName(t *testing.T) {
 	}
 }
 
+func TestTaskCreateRelativeDueDate(t *testing.T) {
+	saved := timeNow
+	timeNow = func() time.Time { return time.Date(2026, 7, 11, 20, 0, 0, 0, time.UTC) }
+	t.Cleanup(func() { timeNow = saved })
+
+	f, c := newFakeClickUp(t)
+	f.timezone(t, "Asia/Bangkok")
+	f.listInSpace(t, "901234", "Sprint 12", "90121", "to do", "done")
+	f.postTask(t, "901234", http.StatusOK, createdTaskJSON)
+
+	out, code := runCLI(t, c, "tasks", "create", "Fix login flow", "--list", "901234", "--due", "+1week")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	want := float64(time.Date(2026, 7, 19, 12, 0, 0, 0, time.UTC).UnixMilli())
+	if len(f.createBodies) != 1 || f.createBodies[0]["due_date"] != want {
+		t.Errorf("POST bodies = %#v, want due_date %.0f", f.createBodies, want)
+	}
+	if f.createBodies[0]["due_date_time"] != false {
+		t.Errorf("POST body = %#v, want due_date_time false", f.createBodies[0])
+	}
+}
+
 func TestTaskCreateListNameNeedsSpace(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "tasks", "create", "Fix login", "--list", "Sprint 12")
@@ -204,6 +227,7 @@ func TestTaskCreateAggregatesUsageErrors(t *testing.T) {
 		"2 fields cannot be applied (nothing was created):",
 		`- priority "asap" not accepted`,
 		`- due "tomorrow" is not a date`,
+		"valid: YYYY-MM-DD (e.g. 2026-08-01) or a relative +3days / -1week",
 		"Fix all the values above, then rerun `clickup-axi tasks create ...` once",
 	} {
 		if !strings.Contains(out, want) {
