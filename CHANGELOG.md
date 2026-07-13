@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `members`: a first-class listing of the workspace's members (id,
+  name, email) - who tasks can be assigned to. The data comes along
+  with the workspace fetch, so discovery costs a single request
+  instead of a deliberately failed `--assignee`.
+- The session-start dashboard prints the effective `default_list`
+  (value and source) when one is configured, so an agent knows a bare
+  `tasks create` works without reading the config first.
+
+### Changed
+
+- The `tasks move` status-conflict refusal now suggests the target
+  list's entry status as a concrete `--status` value alongside the
+  full status vocabulary it already echoed.
+
 ## [1.0.0-rc.1] - 2026-07-12
 
 ### Changed
