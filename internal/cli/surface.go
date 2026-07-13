@@ -64,6 +64,12 @@ var surface = []command{
 		comment: "Lists in one space, with folder context; --archived shows archived Lists instead",
 	},
 	{
+		usage:   "members",
+		summary: "List workspace members (who tasks can be assigned to)",
+		skill:   "clickup-axi members",
+		comment: "workspace members: who tasks can be assigned to",
+	},
+	{
 		skill:   `clickup-axi search "<query>" --assignee all --space "<space>"`,
 		comment: "widen beyond your tasks; space and assignee resolve by name",
 	},

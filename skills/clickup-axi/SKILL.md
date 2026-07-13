@@ -70,6 +70,7 @@ clickup-axi tasks <id> --full  # complete description and all fetched comments; 
 clickup-axi search "<query>"  # find YOUR tasks by words in the title or description
 clickup-axi spaces  # active spaces (projects) available in the workspace
 clickup-axi lists --space "<space>"  # Lists in one space, with folder context; --archived shows archived Lists instead
+clickup-axi members  # workspace members: who tasks can be assigned to
 clickup-axi search "<query>" --assignee all --space "<space>"  # widen beyond your tasks; space and assignee resolve by name
 clickup-axi search "<query>" --updated-after -1week  # date bounds accept YYYY-MM-DD or signed day/week offsets
 clickup-axi tasks create "<name>" --list "<list>" --space "<space>"  # create a task; with a configured default_list, --list is optional
