@@ -70,6 +70,7 @@ clickup-axi tasks <id> --full  # complete description and all fetched comments; 
 clickup-axi search "<query>"  # find YOUR tasks by words in the title or description
 clickup-axi spaces  # active spaces (projects) available in the workspace
 clickup-axi lists --space "<space>"  # Lists in one space, with folder context; --archived shows archived Lists instead
+clickup-axi members  # workspace members: who tasks can be assigned to
 clickup-axi search "<query>" --assignee all --space "<space>"  # widen beyond your tasks; space and assignee resolve by name
 clickup-axi search "<query>" --updated-after -1week  # date bounds accept YYYY-MM-DD or signed day/week offsets
 clickup-axi tasks create "<name>" --list "<list>" --space "<space>"  # create a task; with a configured default_list, --list is optional
@@ -132,7 +133,8 @@ closed status (`--include-closed`).
 ## Default list
 
 With a configured `default_list`, `tasks create "<name>"` alone
-works. The first time a create fails because no list is set, resolve
+works - the session context announces one with a `default_list:`
+line. The first time a create fails because no list is set, resolve
 the list for the task at hand, then offer to save it as the default:
 propose `config set default_list ... --project` when working inside a
 repository (it writes a committable `.clickup-axi.toml` the whole

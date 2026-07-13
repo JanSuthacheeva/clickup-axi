@@ -57,6 +57,7 @@ clickup-axi tasks HGAI-2316          # task, parent, direct subtasks, newest com
 clickup-axi search "oauth redirect"  # find your tasks by title/description text
 clickup-axi spaces                   # active projects in the workspace
 clickup-axi lists --space "Webshop"  # Lists in a project, with folder context
+clickup-axi members                  # workspace members (assignee names that resolve)
 clickup-axi tasks create "Fix login flow" --list "Sprint 12" --space "Webshop"
 clickup-axi tasks create "Fix login flow" --list 901234 --priority high --assignee me
 clickup-axi tasks create "Test the redirect" --parent HGAI-2316   # subtask, list comes from the parent
@@ -162,7 +163,8 @@ already in the agent's context - no prompt, no tool call:
 
 The hook runs `clickup-axi context`: a dashboard of your 5 most urgent
 open tasks (due-soonest first, total stated) behind a hard 5-second
-budget. It is not meant to be run by hand, always exits 0, and
+budget, plus a `default_list:` line when one is configured so the
+agent knows a bare `tasks create` works. It is not meant to be run by hand, always exits 0, and
 degrades to a one-line reason when tasks are unavailable - a broken
 network can never break a session start. Rerunning `setup` repairs a
 moved binary path and is otherwise a no-op; only clickup-axi's own

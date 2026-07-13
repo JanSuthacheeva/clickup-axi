@@ -169,6 +169,55 @@ func TestContextForcedCustomIDsShowsCustomID(t *testing.T) {
 	}
 }
 
+func TestContextShowsConfiguredDefaultList(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "901819471984")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": []}`))
+	})
+	out, code := runCLI(t, c, "context")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "default_list: 901819471984 (env) - tasks create uses it when --list is omitted") {
+		t.Errorf("missing default_list line\noutput:\n%s", out)
+	}
+}
+
+func TestContextShowsFolderDefaultList(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "folder:901808169633")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": []}`))
+	})
+	out, _ := runCLI(t, c, "context")
+	if !strings.Contains(out, "default_list: folder:901808169633 (env) - tasks create uses it when --list is omitted") {
+		t.Errorf("missing folder default_list line\noutput:\n%s", out)
+	}
+}
+
+func TestContextOmitsDefaultListWhenUnsetOrMalformed(t *testing.T) {
+	for name, val := range map[string]string{"unset": "", "malformed": "Sprint 45"} {
+		t.Run(name, func(t *testing.T) {
+			f, c := newFakeClickUp(t)
+			f.me(t, 42, "jan")
+			t.Setenv("CLICKUP_AXI_DEFAULT_LIST", val)
+			f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"tasks": []}`))
+			})
+			out, code := runCLI(t, c, "context")
+			if code != 0 {
+				t.Fatalf("exit code = %d, want 0 (session start must not fail)\noutput:\n%s", code, out)
+			}
+			if strings.Contains(out, "default_list:") {
+				t.Errorf("default_list line printed for %s value\noutput:\n%s", name, out)
+			}
+		})
+	}
+}
+
 func TestContextRejectsUnknownFlags(t *testing.T) {
 	_, c := newFakeClickUp(t)
 	out, code := runCLI(t, c, "context", "--full")
