@@ -162,7 +162,8 @@ already in the agent's context - no prompt, no tool call:
 
 The hook runs `clickup-axi context`: a dashboard of your 5 most urgent
 open tasks (due-soonest first, total stated) behind a hard 5-second
-budget. It is not meant to be run by hand, always exits 0, and
+budget, plus a `default_list:` line when one is configured so the
+agent knows a bare `tasks create` works. It is not meant to be run by hand, always exits 0, and
 degrades to a one-line reason when tasks are unavailable - a broken
 network can never break a session start. Rerunning `setup` repairs a
 moved binary path and is otherwise a no-op; only clickup-axi's own

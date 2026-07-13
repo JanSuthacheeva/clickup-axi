@@ -105,7 +105,8 @@ closed status (`--include-closed`).
 ## Default list
 
 With a configured `default_list`, `tasks create "<name>"` alone
-works. The first time a create fails because no list is set, resolve
+works - the session context announces one with a `default_list:`
+line. The first time a create fails because no list is set, resolve
 the list for the task at hand, then offer to save it as the default:
 propose `config set default_list ... --project` when working inside a
 repository (it writes a committable `.clickup-axi.toml` the whole

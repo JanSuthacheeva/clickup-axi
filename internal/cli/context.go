@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/JanSuthacheeva/clickup-axi/internal/clickup"
+	"github.com/JanSuthacheeva/clickup-axi/internal/config"
 	"github.com/JanSuthacheeva/clickup-axi/internal/output"
 )
 
@@ -50,6 +51,9 @@ func cmdContext(args []string, c *clickup.Client, out io.Writer) int {
 	}
 
 	fmt.Fprintln(out, "clickup-axi: ClickUp CLI (tasks, search, create, edit, comment)")
+	if v, ok := effectiveDefaultList(); ok {
+		fmt.Fprintf(out, "default_list: %s (%s) - tasks create uses it when --list is omitted\n", v.Val, v.Scope)
+	}
 
 	type fetched struct {
 		tasks    []clickup.Task
@@ -140,6 +144,24 @@ func cmdContext(args []string, c *clickup.Client, out io.Writer) int {
 		firstHelp,
 		"Run `clickup-axi tasks <id>` for details and comments")
 	return 0
+}
+
+// effectiveDefaultList loads the configured default_list for the
+// dashboard, telling the agent up front that a bare `tasks create`
+// works here. Every failure - unreadable config, malformed value - is
+// a silent skip: a broken dashboard must not break a session start,
+// and tasks create reports the recovery when the default is actually
+// used.
+func effectiveDefaultList() (config.Value, bool) {
+	cfg, err := loadConfig()
+	if err != nil {
+		return config.Value{}, false
+	}
+	v, found := cfg.Get("default_list")
+	if !found || (!allDigits(v.Val) && !isFolderIDValue(v.Val)) {
+		return config.Value{}, false
+	}
+	return v, true
 }
 
 // contextUnavailable is every degraded path: the discovery line has
