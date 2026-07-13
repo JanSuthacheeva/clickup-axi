@@ -105,13 +105,36 @@ func TestTaskMoveStatusMissingInTargetRefusesWithVocabulary(t *testing.T) {
 	}
 	want := `error: status "in progress" does not exist in list 905678 "Icebox"
   target list statuses: Backlog, done
-help[1]: Run ` + "`clickup-axi tasks move abc123 --list 905678 --status \"<status>\"`" + ` to pick the status it lands in
+help[1]: Run ` + "`clickup-axi tasks move abc123 --list 905678 --status \"Backlog\"`" + ` to land it in the entry status, or pick another of the statuses above
 `
 	if out != want {
 		t.Errorf("error output mismatch\ngot:\n%s\nwant:\n%s", out, want)
 	}
 	if len(f.moveBodies) != 0 {
 		t.Errorf("refusal issued %d v3 PUTs, want 0", len(f.moveBodies))
+	}
+}
+
+// A target without an open-type status (all custom/closed) cannot
+// anchor a suggestion, so the refusal falls back to the generic hint.
+func TestTaskMoveStatusMissingNoOpenStatusKeepsGenericHint(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.task(t, "abc123", moveTaskJSON)
+	f.listJSON(t, "905678", `{"id": "905678", "name": "Icebox", "statuses": [
+		{"id": "st_a", "status": "review", "type": "custom"},
+		{"id": "st_b", "status": "done", "type": "closed"}
+	]}`)
+
+	out, code := runCLI(t, c, "tasks", "move", "abc123", "--list", "905678")
+	if code != 1 {
+		t.Fatalf("exit code = %d, want 1\noutput:\n%s", code, out)
+	}
+	want := `error: status "in progress" does not exist in list 905678 "Icebox"
+  target list statuses: review, done
+help[1]: Run ` + "`clickup-axi tasks move abc123 --list 905678 --status \"<status>\"`" + ` to pick the status it lands in
+`
+	if out != want {
+		t.Errorf("error output mismatch\ngot:\n%s\nwant:\n%s", out, want)
 	}
 }
 

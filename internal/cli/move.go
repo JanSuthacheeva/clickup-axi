@@ -16,6 +16,17 @@ import (
 // name the landing status via --status (never a silent remap), and a
 // --status that isn't needed is refused rather than smuggled into a
 // second write behind one command.
+// entryStatus is a list's open-type status - where new tasks land, so
+// the safe default to suggest. "" when the list has none.
+func entryStatus(l *clickup.List) string {
+	for _, s := range l.Statuses {
+		if strings.EqualFold(s.Type, "open") {
+			return s.Status
+		}
+	}
+	return ""
+}
+
 func cmdTaskMove(args []string, c *clickup.Client, out io.Writer) int {
 	var id, list, space, status string
 	statusSet := false
@@ -143,9 +154,15 @@ func cmdTaskMove(args []string, c *clickup.Client, out io.Writer) int {
 		return 1
 	case !kept:
 		if !statusSet {
+			// A cautious agent stalls on "<status>" alone (asks the user
+			// instead of acting), so the hint anchors on the target's
+			// entry status - a concrete, safe landing spot.
+			hint := fmt.Sprintf("Run `clickup-axi tasks move %s --list %s --status \"<status>\"` to pick the status it lands in", displayID(t), target.ID)
+			if entry := entryStatus(target); entry != "" {
+				hint = fmt.Sprintf("Run `clickup-axi tasks move %s --list %s --status %q` to land it in the entry status, or pick another of the statuses above", displayID(t), target.ID, entry)
+			}
 			output.WriteError(out, fmt.Sprintf("status %q does not exist in list %s %q\n  target list statuses: %s",
-				t.Status.Status, target.ID, target.Name, strings.Join(statusNames(target), ", ")),
-				fmt.Sprintf("Run `clickup-axi tasks move %s --list %s --status \"<status>\"` to pick the status it lands in", displayID(t), target.ID))
+				t.Status.Status, target.ID, target.Name, strings.Join(statusNames(target), ", ")), hint)
 			return 1
 		}
 		dest := ""
