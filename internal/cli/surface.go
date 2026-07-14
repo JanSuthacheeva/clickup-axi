@@ -79,10 +79,14 @@ var surface = []command{
 	},
 	{
 		usage:   `tasks create "<name>"`,
-		summary: "Create a task in a list (--list <name|id>)",
+		summary: "Create a task (in the default_list, or --list <name|id>)",
 		note:    "(--space scopes a list name; --parent makes a subtask; --status/--assignee/--priority/--due/--body/--tag set fields)",
+		skill:   `clickup-axi tasks create "<name>"`,
+		comment: "create in the default_list the session context announces - no --list, no asking which list",
+	},
+	{
 		skill:   `clickup-axi tasks create "<name>" --list "<list>" --space "<space>"`,
-		comment: "create a task; with a configured default_list, --list is optional",
+		comment: "target an explicit list: when no default is configured, or another list is meant",
 	},
 	{
 		skill:   `clickup-axi tasks create "<name>" --list <id> --assignee me --due <date>`,

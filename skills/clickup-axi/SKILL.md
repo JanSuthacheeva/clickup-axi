@@ -73,7 +73,8 @@ clickup-axi lists --space "<space>"  # Lists in one space, with folder context; 
 clickup-axi members  # workspace members: who tasks can be assigned to
 clickup-axi search "<query>" --assignee all --space "<space>"  # widen beyond your tasks; space and assignee resolve by name
 clickup-axi search "<query>" --updated-after -1week  # date bounds accept YYYY-MM-DD or signed day/week offsets
-clickup-axi tasks create "<name>" --list "<list>" --space "<space>"  # create a task; with a configured default_list, --list is optional
+clickup-axi tasks create "<name>"  # create in the default_list the session context announces - no --list, no asking which list
+clickup-axi tasks create "<name>" --list "<list>" --space "<space>"  # target an explicit list: when no default is configured, or another list is meant
 clickup-axi tasks create "<name>" --list <id> --assignee me --due <date>  # --status, --priority, --body "<markdown>", --tag work too
 clickup-axi tasks create "<name>" --parent <task id>  # create a subtask; the list comes from the parent, no --list needed
 clickup-axi tasks edit <id> --status "<status>"
@@ -132,9 +133,11 @@ closed status (`--include-closed`).
 
 ## Default list
 
-With a configured `default_list`, `tasks create "<name>"` alone
-works - the session context announces one with a `default_list:`
-line. The first time a create fails because no list is set, resolve
+A `default_list:` line in the session context names the list a bare
+`tasks create "<name>"` lands in. When the user means that list (or
+does not say), create directly - do not ask which space or list, and
+do not pass `--list`/`--space`; they are only for targeting a
+different list. The first time a create fails because no list is set, resolve
 the list for the task at hand, then offer to save it as the default:
 propose `config set default_list ... --project` when working inside a
 repository (it writes a committable `.clickup-axi.toml` the whole

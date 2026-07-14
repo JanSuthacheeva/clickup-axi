@@ -41,7 +41,8 @@ view flags (with an id):
                    shown are silently absorbed
 
 create "<name>" (make a new task; "create" is a reserved word):
-  --list <name|id>       target list (required); a name needs --space
+  --list <name|id>       target list; omitted = the configured
+                         default_list; a name needs --space
   --space <name|id>      the space (project) whose list --list names
   --status "<status>"    initial status (else the list's default)
   --assignee <who>       assign on creation (repeatable, comma-separated);
@@ -92,6 +93,7 @@ examples:
   clickup-axi tasks --page 2
   clickup-axi tasks HGAI-2316
   clickup-axi tasks 86ey3tx8m --full
+  clickup-axi tasks create "Fix login flow"
   clickup-axi tasks create "Fix login flow" --list "Sprint 12" --space "Webshop"
   clickup-axi tasks create "Fix login flow" --list 901234 --priority high --assignee me
   clickup-axi tasks create "Test the redirect" --parent HGAI-2316
