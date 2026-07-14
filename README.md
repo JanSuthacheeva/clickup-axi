@@ -58,11 +58,11 @@ clickup-axi search "oauth redirect"  # find your tasks by title/description text
 clickup-axi spaces                   # active projects in the workspace
 clickup-axi lists --space "Webshop"  # Lists in a project, with folder context
 clickup-axi members                  # workspace members (assignee names that resolve)
-clickup-axi tasks create "Fix login flow" --list "Sprint 12" --space "Webshop"
+clickup-axi tasks create "Fix login flow"    # lands in the configured default_list
+clickup-axi tasks create "Fix login flow" --list "Sprint 12" --space "Webshop"   # explicit target list
 clickup-axi tasks create "Fix login flow" --list 901234 --priority high --assignee me
 clickup-axi tasks create "Test the redirect" --parent HGAI-2316   # subtask, list comes from the parent
-clickup-axi config set default_list "Sprint 12" --space "Webshop"  # make --list optional on create
-clickup-axi tasks create "Fix login flow"                          # lands in the default list
+clickup-axi config set default_list "Sprint 12" --space "Webshop"  # make the bare create work
 clickup-axi tasks edit HGAI-2316 --status "in review"
 clickup-axi tasks edit HGAI-2316 --assignee ting --unassign me   # reassign (names resolve)
 clickup-axi tasks edit HGAI-2316 --priority high --due 2026-08-01   # multi-field edit, one atomic call
@@ -113,7 +113,10 @@ requires at least one bounding filter. Spaces and assignees resolve
 by name (case-insensitive), because people think in projects and
 names, not ids - and a person searching for a task nearly always
 knows which project it is in, so agents are guided to ask for the
-project rather than scan widely:
+project rather than scan widely. A search scoped with `--space` or
+`--list` that finds nothing re-checks once without the location scope
+and inlines the top matches it hid, so a wrongly guessed space is a
+one-step recovery instead of a dead end:
 
 ```sh
 clickup-axi search invoice --status "in review"
@@ -163,8 +166,9 @@ already in the agent's context - no prompt, no tool call:
 
 The hook runs `clickup-axi context`: a dashboard of your 5 most urgent
 open tasks (due-soonest first, total stated) behind a hard 5-second
-budget, plus a `default_list:` line when one is configured so the
-agent knows a bare `tasks create` works. It is not meant to be run by hand, always exits 0, and
+budget, plus a `default_list:` line when one is configured, resolved
+to the concrete list by name so the agent creates there with a bare
+`tasks create` instead of asking which list. It is not meant to be run by hand, always exits 0, and
 degrades to a one-line reason when tasks are unavailable - a broken
 network can never break a session start. Rerunning `setup` repairs a
 moved binary path and is otherwise a no-op; only clickup-axi's own

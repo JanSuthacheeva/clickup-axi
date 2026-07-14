@@ -123,7 +123,7 @@ commands:
   lists --space <name|id>  List active Lists in one space
                            (--archived shows archived Lists; folder context is included)
   members                  List workspace members (who tasks can be assigned to)
-  tasks create "<name>"    Create a task in a list (--list <name|id>)
+  tasks create "<name>"    Create a task (in the default_list, or --list <name|id>)
                            (--space scopes a list name; --parent makes a subtask; --status/--assignee/--priority/--due/--body/--tag set fields)
   tasks edit <id>          Change status, assignees, priority, name, due date, description, tags, parent
   tasks comment <id>       Add a comment to a task (--text "<text>")

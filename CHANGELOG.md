@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- A `search` scoped with `--space`/`--list` that matches nothing now
+  re-runs once with the location scope dropped and inlines the top
+  matches it hid (id and title, capped at three), so a wrongly guessed
+  space is a one-step recovery instead of a dead end. The re-check is
+  client-side under the same page budget, returns silently on any API
+  error so an optional widening never turns a search into a failure,
+  and withholds the "rerun without `--space`/`--list`" hint when
+  dropping the flags would leave an unbounded `--assignee all`.
+- The session-start dashboard's `default_list:` line now resolves the
+  configured value to the concrete list by name (id and source
+  alongside) and states plainly that a bare `tasks create "<name>"`
+  lands there, so an agent connects the user's words to the default and
+  stops asking which space or list. The name lookup shares the
+  dashboard's hard 5-second budget and degrades to the raw value on a
+  slow or failed resolve.
+
 ## [1.0.0-rc.2] - 2026-07-13
 
 ### Added

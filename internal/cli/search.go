@@ -246,6 +246,21 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 	}
 
 	matches := rankTasks(query, candidates)
+	// A zero inside --space/--list is the one zero that is often the
+	// agent's own mistake (scoping to the destination of a move is the
+	// classic case), and the CLI can disprove it cheaply: the scan is
+	// client-side anyway, so rerun it once with the location filters
+	// dropped and point at what the scope hid instead of dead-ending.
+	var wider *widerScan
+	if len(matches) == 0 && (space != "" || list != "") {
+		if wider = scanWider(c, team.ID, q, query); wider != nil {
+			wider.spaceSet, wider.listSet = space != "", list != ""
+			// Dropping the location filters must leave a legal rerun:
+			// --assignee all needs another bounding filter, so the
+			// drop-the-flag hint is withheld when it would be rejected.
+			wider.rerunnable = assignee != "all" || status != "" || dateUpdatedGt > 0 || dateUpdatedLt > 0
+		}
+	}
 	sc := searchScope{
 		assignee:      assigneeLabel,
 		status:        status,
@@ -257,8 +272,95 @@ func cmdSearch(args []string, c *clickup.Client, out io.Writer) int {
 		scanned:       scanned,
 		complete:      complete,
 	}
-	renderSearch(out, query, matches, sc, limit, extra)
+	renderSearch(out, query, matches, sc, wider, limit, extra)
 	return 0
+}
+
+// widerScan is the result of the location-free fallback a scoped
+// zero-match search runs: the same query re-ranked with --space/--list
+// dropped, so the output can point at matches the scope hid.
+type widerScan struct {
+	matches    []searchMatch
+	complete   bool
+	spaceSet   bool
+	listSet    bool
+	rerunnable bool
+}
+
+// scanWider reruns the scan without the location filters, under the
+// same page budget as the primary scan. Any API error returns nil: the
+// scoped zero already rendered honestly, and an optional widening must
+// not turn a successful search into a failure.
+func scanWider(c *clickup.Client, teamID string, q clickup.TaskQuery, query string) *widerScan {
+	q.SpaceIDs, q.ListIDs = nil, nil
+	var candidates []clickup.Task
+	complete := false
+	for p := 0; p < searchMaxPages; p++ {
+		q.Page = p
+		page, last, err := c.GetTeamTasksPage(teamID, q)
+		if err != nil {
+			return nil
+		}
+		candidates = append(candidates, page...)
+		if last {
+			complete = true
+			break
+		}
+	}
+	return &widerScan{matches: rankTasks(query, candidates), complete: complete}
+}
+
+// searchWiderCap caps the matches a wider-scope hint inlines - the
+// same one-step-retry pattern as the resolvers' candidate lists.
+const searchWiderCap = 3
+
+// hints renders the wider matches as help lines: the top matches are
+// inlined as id/title pairs so the very next call can be `tasks <id>`.
+func (w *widerScan) hints() []string {
+	shown := w.matches
+	if len(shown) > searchWiderCap {
+		shown = shown[:searchWiderCap]
+	}
+	pairs := make([]string, 0, len(shown))
+	for i := range shown {
+		t := &shown[i].Task
+		pairs = append(pairs, fmt.Sprintf("%s %q", displayID(t), t.Name))
+	}
+	count := fmt.Sprintf("%d match%s", len(w.matches), pluralES(len(w.matches)))
+	if !w.complete {
+		count = fmt.Sprintf("%d+ matches", len(w.matches))
+	}
+	head := fmt.Sprintf("%s outside %s: %s", count, w.where(), strings.Join(pairs, ", "))
+	if len(w.matches) > searchWiderCap {
+		head = fmt.Sprintf("%s outside %s, top %d: %s", count, w.where(), searchWiderCap, strings.Join(pairs, ", "))
+	}
+	hints := []string{head}
+	if w.rerunnable {
+		hints = append(hints, "Rerun without "+w.flags()+" to see them ranked")
+	}
+	return append(hints, "Run `clickup-axi tasks <id>` for full detail and comments")
+}
+
+func (w *widerScan) where() string {
+	switch {
+	case w.spaceSet && w.listSet:
+		return "this space/list"
+	case w.listSet:
+		return "this list"
+	default:
+		return "this space"
+	}
+}
+
+func (w *widerScan) flags() string {
+	switch {
+	case w.spaceSet && w.listSet:
+		return "--space/--list"
+	case w.listSet:
+		return "--list"
+	default:
+		return "--space"
+	}
 }
 
 // resolveAssignee turns an assignee value into a member: "me" resolves
@@ -447,7 +549,7 @@ func (s searchScope) line() string {
 	return strings.Join(parts, "; ")
 }
 
-func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchScope, limit int, extra []taskField) {
+func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchScope, wider *widerScan, limit int, extra []taskField) {
 	shown := matches
 	if len(shown) > limit {
 		shown = shown[:limit]
@@ -464,6 +566,12 @@ func renderSearch(out io.Writer, query string, matches []searchMatch, sc searchS
 	fmt.Fprintf(out, "scope: %s\n", sc.line())
 
 	if len(matches) == 0 {
+		// Matches found outside the scope supersede the guesswork
+		// hints: the likely answer is at hand, everything else is noise.
+		if wider != nil && len(wider.matches) > 0 {
+			output.WriteHelp(out, wider.hints()...)
+			return
+		}
 		help := []string{}
 		if !sc.complete {
 			help = append(help, "Not every task was scanned; narrow with --status/--space/--list/--updated-after")
