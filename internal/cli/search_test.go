@@ -454,6 +454,219 @@ func TestSearchZeroMatchesIncompleteScanHintsAtNarrowing(t *testing.T) {
 	}
 }
 
+// A zero inside --space/--list is often the agent's own wrong scope
+// (classically the destination of a move). The fallback scan reruns the
+// query without the location filters and inlines what the scope hid so
+// the very next call can be `tasks <id>`.
+func TestSearchScopedZeroHintsWiderMatches(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("space_ids[]") == "333" {
+			w.Write([]byte(`{"tasks": []}`))
+			return
+		}
+		w.Write([]byte(`{"tasks": [
+			{"id": "86ey1", "name": "Consolidate the error budgets", "status": {"status": "to do"}, "due_date": null}
+		]}`))
+	})
+
+	out, code := runCLI(t, c, "search", "error budgets", "--space", "333")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`search "error budgets": 0 matches (searched title, custom id, description)`,
+		"scope: assignee=me; space=333; closed excluded; scanned 0 (complete)",
+		`1 match outside this space: 86ey1 "Consolidate the error budgets"`,
+		"Rerun without --space to see them ranked",
+		"Run `clickup-axi tasks <id>` for full detail and comments",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+	// The found matches supersede the guesswork hints.
+	if strings.Contains(out, "Ask the user which project") || strings.Contains(out, "Comment bodies") {
+		t.Errorf("guesswork hints shown next to wider matches\noutput:\n%s", out)
+	}
+}
+
+// Dropping --space from an --assignee all search leaves a query the
+// unbounded-scan guard rejects, so the drop-the-flag rerun hint is
+// withheld; the inlined match ids remain the recovery.
+func TestSearchScopedZeroWiderRerunHintNeedsBoundedRerun(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("space_ids[]") == "333" {
+			w.Write([]byte(`{"tasks": []}`))
+			return
+		}
+		w.Write([]byte(`{"tasks": [
+			{"id": "86ey1", "name": "Consolidate the error budgets", "status": {"status": "to do"}, "due_date": null}
+		]}`))
+	})
+
+	out, code := runCLI(t, c, "search", "error budgets", "--assignee", "all", "--space", "333")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `1 match outside this space: 86ey1 "Consolidate the error budgets"`) {
+		t.Errorf("output missing the wider-match hint\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "Rerun without --space") {
+		t.Errorf("rerun hint suggests a search the unbounded-scan guard rejects\noutput:\n%s", out)
+	}
+}
+
+func TestSearchScopedZeroWiderListLabelAndFlag(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("list_ids[]") == "888" {
+			w.Write([]byte(`{"tasks": []}`))
+			return
+		}
+		w.Write([]byte(`{"tasks": [
+			{"id": "86ey1", "name": "Consolidate the error budgets", "status": {"status": "to do"}, "due_date": null}
+		]}`))
+	})
+
+	out, code := runCLI(t, c, "search", "error budgets", "--list", "888")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	for _, want := range []string{
+		`1 match outside this list: 86ey1 "Consolidate the error budgets"`,
+		"Rerun without --list to see them ranked",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output missing %q\noutput:\n%s", want, out)
+		}
+	}
+}
+
+func TestSearchScopedZeroWiderZeroKeepsStandardHints(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": []}`))
+	})
+
+	out, code := runCLI(t, c, "search", "kubernetes", "--space", "333")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if strings.Contains(out, "outside this space") {
+		t.Errorf("wider hint shown although the wider scan also found nothing\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "Ask the user which project (space) the task is in") {
+		t.Errorf("standard zero hints missing\noutput:\n%s", out)
+	}
+}
+
+func TestSearchScopedZeroWiderCapsInlineMatches(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("space_ids[]") == "333" {
+			w.Write([]byte(`{"tasks": []}`))
+			return
+		}
+		w.Write([]byte(`{"tasks": [
+			{"id": "w1", "name": "budget alpha", "status": {"status": "open"}, "due_date": null},
+			{"id": "w2", "name": "budget bravo", "status": {"status": "open"}, "due_date": null},
+			{"id": "w3", "name": "budget charlie", "status": {"status": "open"}, "due_date": null},
+			{"id": "w4", "name": "budget delta", "status": {"status": "open"}, "due_date": null},
+			{"id": "w5", "name": "budget echo", "status": {"status": "open"}, "due_date": null}
+		]}`))
+	})
+
+	out, code := runCLI(t, c, "search", "budget", "--space", "333")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `5 matches outside this space, top 3: w1 "budget alpha", w2 "budget bravo", w3 "budget charlie"`) {
+		t.Errorf("capped wider hint wrong\noutput:\n%s", out)
+	}
+	if strings.Contains(out, "w4") {
+		t.Errorf("match past the inline cap leaked\noutput:\n%s", out)
+	}
+}
+
+// The wider count carries the same honesty marker as every scan: when
+// the fallback hit the page budget, the count is a floor, not a total.
+func TestSearchScopedZeroWiderIncompleteScanMarksCount(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("space_ids[]") == "333" {
+			w.Write([]byte(`{"tasks": []}`))
+			return
+		}
+		page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+		rows := []string{fmt.Sprintf(`{"id": "k%d", "name": "kubernetes chore %d", "status": {"status": "open"}, "due_date": null}`, page, page)}
+		for i := 1; i < clickup.TeamTasksPageSize; i++ {
+			rows = append(rows, fmt.Sprintf(`{"id": "p%dt%d", "name": "unrelated %d", "status": {"status": "open"}, "due_date": null}`, page, i, i))
+		}
+		fmt.Fprintf(w, `{"tasks": [%s]}`, strings.Join(rows, ","))
+	})
+
+	out, code := runCLI(t, c, "search", "kubernetes", "--space", "333")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, `3+ matches outside this space: k0 "kubernetes chore 0"`) {
+		t.Errorf("incomplete wider scan must mark the count as a floor\noutput:\n%s", out)
+	}
+}
+
+// An unscoped zero has no hidden scope to disprove: no second scan.
+func TestSearchUnscopedZeroDoesNotRescan(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	calls := 0
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Write([]byte(`{"tasks": []}`))
+	})
+
+	_, code := runCLI(t, c, "search", "kubernetes")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0", code)
+	}
+	if calls != 1 {
+		t.Errorf("task endpoint called %d times, want 1 (no fallback rescan without a location scope)", calls)
+	}
+}
+
+// The widening is best-effort: an API error during the fallback must
+// not fail the search that already completed, nor leak into stdout.
+func TestSearchWiderScanErrorFallsBackQuietly(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("space_ids[]") == "333" {
+			w.Write([]byte(`{"tasks": []}`))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"err": "boom", "ECODE": "X_001"}`))
+	})
+
+	out, code := runCLI(t, c, "search", "kubernetes", "--space", "333")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if strings.Contains(out, "outside this space") || strings.Contains(out, "boom") {
+		t.Errorf("fallback error leaked or produced a hint\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "Ask the user which project (space) the task is in") {
+		t.Errorf("standard zero hints missing after a failed fallback\noutput:\n%s", out)
+	}
+}
+
 func TestSearchBoundedScanReportsUnscannedTasks(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
