@@ -51,8 +51,16 @@ func cmdContext(args []string, c *clickup.Client, out io.Writer) int {
 	}
 
 	fmt.Fprintln(out, "clickup-axi: ClickUp CLI (tasks, search, create, edit, comment)")
-	if v, ok := effectiveDefaultList(); ok {
-		fmt.Fprintf(out, "default_list: %s (%s) - tasks create uses it when --list is omitted\n", v.Val, v.Scope)
+
+	// The list's name resolves concurrently with the task fetch: the
+	// directive line below only lands when the agent can connect the
+	// user's words ("the Sprint 45 list") to the configured default,
+	// and only the name makes that connection.
+	def, haveDefault := effectiveDefaultList()
+	var defCh chan resolvedDefault
+	if haveDefault {
+		defCh = make(chan resolvedDefault, 1)
+		go func() { defCh <- resolveDefaultList(c, def.Val) }()
 	}
 
 	type fetched struct {
@@ -91,13 +99,26 @@ func cmdContext(args []string, c *clickup.Client, out io.Writer) int {
 		ch <- fetched{tasks: tasks, lastPage: last, err: err}
 	}()
 
+	timer := time.NewTimer(contextBudget)
+	defer timer.Stop()
 	var f fetched
 	select {
 	case f = <-ch:
-	case <-time.After(contextBudget):
+	case <-timer.C:
+		writeDefaultListLine(out, def, haveDefault, resolvedDefault{})
 		return contextUnavailable(out, "right now",
 			"Run `clickup-axi tasks` to retry your open tasks")
 	}
+	// The name lookup gets only what is left of the shared budget; a
+	// slow or failed lookup degrades the line to the raw value.
+	var res resolvedDefault
+	if haveDefault {
+		select {
+		case res = <-defCh:
+		case <-timer.C:
+		}
+	}
+	writeDefaultListLine(out, def, haveDefault, res)
 	if f.err != nil {
 		switch {
 		case f.err.Message == clickup.ErrNoAuth:
@@ -162,6 +183,54 @@ func effectiveDefaultList() (config.Value, bool) {
 		return config.Value{}, false
 	}
 	return v, true
+}
+
+// resolvedDefault is the concrete list a configured default currently
+// means: the name is what lets an agent connect a user's "put it in
+// Sprint 45" to the default without any lookup of its own.
+type resolvedDefault struct {
+	name, id string
+	ok       bool
+}
+
+// resolveDefaultList fetches what the configured value points at: a
+// numeric id fetches the list's name, a folder default derives the
+// folder's current (sprint) list. Every failure returns !ok - the
+// dashboard degrades to the raw value rather than breaking a session
+// start.
+func resolveDefaultList(c *clickup.Client, val string) resolvedDefault {
+	if allDigits(val) {
+		l, err := c.GetList(val)
+		if err != nil || l.Name == "" {
+			return resolvedDefault{}
+		}
+		return resolvedDefault{name: l.Name, id: val, ok: true}
+	}
+	folder, err := c.GetFolder(strings.TrimPrefix(val, "folder:"))
+	if err != nil {
+		return resolvedDefault{}
+	}
+	cur, ok := folder.CurrentList(time.Now())
+	if !ok || cur.Name == "" {
+		return resolvedDefault{}
+	}
+	return resolvedDefault{name: cur.Name, id: cur.ID, ok: true}
+}
+
+// writeDefaultListLine prints the default_list dashboard line. It is
+// directive on purpose: benchmark runs show agents asking the user
+// which list to create in even though a default is configured, so the
+// line names the resolved list and states that a bare create lands
+// there.
+func writeDefaultListLine(out io.Writer, v config.Value, have bool, res resolvedDefault) {
+	if !have {
+		return
+	}
+	target := fmt.Sprintf("%s (%s)", v.Val, v.Scope)
+	if res.ok {
+		target = fmt.Sprintf("%s (%s, %s)", res.name, res.id, v.Scope)
+	}
+	fmt.Fprintf(out, "default_list: %s - a bare `tasks create \"<name>\"` lands here\n", target)
 }
 
 // contextUnavailable is every degraded path: the discovery line has

@@ -169,23 +169,101 @@ func TestContextForcedCustomIDsShowsCustomID(t *testing.T) {
 	}
 }
 
-func TestContextShowsConfiguredDefaultList(t *testing.T) {
+// The default_list line is directive and names the list: benchmark
+// runs show agents asking "which list?" on a bare create unless the
+// dashboard connects the configured id to the list's name.
+func TestContextShowsConfiguredDefaultListByName(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
 	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "901819471984")
 	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"tasks": []}`))
 	})
+	f.mux.HandleFunc("GET /api/v2/list/901819471984", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id": "901819471984", "name": "Sprint 45"}`))
+	})
 	out, code := runCLI(t, c, "context")
 	if code != 0 {
 		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
 	}
-	if !strings.Contains(out, "default_list: 901819471984 (env) - tasks create uses it when --list is omitted") {
-		t.Errorf("missing default_list line\noutput:\n%s", out)
+	if !strings.Contains(out, "default_list: Sprint 45 (901819471984, env) - a bare `tasks create \"<name>\"` lands here") {
+		t.Errorf("missing directive default_list line\noutput:\n%s", out)
 	}
 }
 
-func TestContextShowsFolderDefaultList(t *testing.T) {
+// A failed name lookup degrades the line to the raw value - still
+// directive, never absent, never a broken session start.
+func TestContextDefaultListNameLookupFailureDegrades(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "901819471984")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": []}`))
+	})
+	// No list handler registered: the lookup 404s.
+	out, code := runCLI(t, c, "context")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "default_list: 901819471984 (env) - a bare `tasks create \"<name>\"` lands here") {
+		t.Errorf("missing degraded default_list line\noutput:\n%s", out)
+	}
+}
+
+// A slow name lookup must not hold the dashboard past the budget: the
+// line degrades to the raw value and the tasks block still renders.
+func TestContextDefaultListSlowLookupDegrades(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "901819471984")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": [
+			{"id": "86ey1", "name": "Only one", "status": {"status": "open"}, "due_date": null}
+		]}`))
+	})
+	f.mux.HandleFunc("GET /api/v2/list/901819471984", func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(300 * time.Millisecond)
+		w.Write([]byte(`{"id": "901819471984", "name": "Sprint 45"}`))
+	})
+	old := contextBudget
+	contextBudget = 100 * time.Millisecond
+	t.Cleanup(func() { contextBudget = old })
+
+	out, code := runCLI(t, c, "context")
+	if code != 0 {
+		t.Fatalf("exit code = %d, want 0\noutput:\n%s", code, out)
+	}
+	if !strings.Contains(out, "default_list: 901819471984 (env) - a bare `tasks create \"<name>\"` lands here") {
+		t.Errorf("missing degraded default_list line\noutput:\n%s", out)
+	}
+	if !strings.Contains(out, "tasks[1]{id,title,status,due}:") {
+		t.Errorf("tasks block missing despite a healthy task fetch\noutput:\n%s", out)
+	}
+}
+
+// A folder default resolves to the folder's current list, so the line
+// names the concrete sprint list a bare create would land in.
+func TestContextShowsFolderDefaultListCurrentList(t *testing.T) {
+	f, c := newFakeClickUp(t)
+	f.me(t, 42, "jan")
+	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "folder:901808169633")
+	f.mux.HandleFunc("GET /api/v2/team/9018/task", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"tasks": []}`))
+	})
+	f.mux.HandleFunc("GET /api/v2/folder/901808169633", func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"id": "901808169633", "name": "Sprints", "lists": [
+			{"id": "901819471983", "name": "Sprint 44"},
+			{"id": "901819471984", "name": "Sprint 45"}
+		]}`))
+	})
+	out, _ := runCLI(t, c, "context")
+	if !strings.Contains(out, "default_list: Sprint 45 (901819471984, env) - a bare `tasks create \"<name>\"` lands here") {
+		t.Errorf("missing resolved folder default_list line\noutput:\n%s", out)
+	}
+}
+
+// When the folder lookup fails the raw folder value is still shown.
+func TestContextFolderDefaultListLookupFailureDegrades(t *testing.T) {
 	f, c := newFakeClickUp(t)
 	f.me(t, 42, "jan")
 	t.Setenv("CLICKUP_AXI_DEFAULT_LIST", "folder:901808169633")
@@ -193,8 +271,8 @@ func TestContextShowsFolderDefaultList(t *testing.T) {
 		w.Write([]byte(`{"tasks": []}`))
 	})
 	out, _ := runCLI(t, c, "context")
-	if !strings.Contains(out, "default_list: folder:901808169633 (env) - tasks create uses it when --list is omitted") {
-		t.Errorf("missing folder default_list line\noutput:\n%s", out)
+	if !strings.Contains(out, "default_list: folder:901808169633 (env) - a bare `tasks create \"<name>\"` lands here") {
+		t.Errorf("missing degraded folder default_list line\noutput:\n%s", out)
 	}
 }
 
