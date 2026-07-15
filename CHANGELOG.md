@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-07-15
+
+First stable release. Promotes the 1.0.0-rc line unchanged since
+1.0.0-rc.3; the command surface is complete and the package is
+considered stable. Benchmark results and a case study will follow.
+
 ## [1.0.0-rc.3] - 2026-07-14
 
 ### Changed
@@ -324,6 +330,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   release, plus a passive once-per-24h update notice and healing of
   installed skill copies (`CLICKUP_AXI_NO_UPDATE_CHECK=1` disables).
 
+[1.0.0]: https://github.com/JanSuthacheeva/clickup-axi/compare/v1.0.0-rc.3...v1.0.0
 [1.0.0-rc.3]: https://github.com/JanSuthacheeva/clickup-axi/compare/v1.0.0-rc.2...v1.0.0-rc.3
 [1.0.0-rc.2]: https://github.com/JanSuthacheeva/clickup-axi/compare/v1.0.0-rc.1...v1.0.0-rc.2
 [1.0.0-rc.1]: https://github.com/JanSuthacheeva/clickup-axi/compare/v0.6.0...v1.0.0-rc.1

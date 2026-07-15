@@ -1,9 +1,9 @@
 # clickup-axi
 
 > [!NOTE]
-> **v1.0.0 is close.** The command surface is complete and the package
-> is considered stable; release candidates are being cut and benchmarks
-> will be published soon. Keep the binary current (`clickup-axi update`,
+> **v1.0.0 is released.** The command surface is complete and the
+> package is stable. Benchmark results and a case study will be
+> published very soon. Keep the binary current (`clickup-axi update`,
 > or agree when the update notice appears). Feature requests are very
 > welcome in the
 > [issues](https://github.com/JanSuthacheeva/clickup-axi/issues).
