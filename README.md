@@ -2,10 +2,11 @@
 
 > [!NOTE]
 > **v1.0.0 is released.** The command surface is complete and the
-> package is stable. Benchmark results and a case study will be
-> published very soon. Keep the binary current (`clickup-axi update`,
-> or agree when the update notice appears). Feature requests are very
-> welcome in the
+> package is stable. It has been benchmarked head-to-head against the
+> official ClickUp MCP server - see [Benchmark](#benchmark) below, or the
+> full [benchmark study](https://github.com/JanSuthacheeva/clickup-ai-benchmark).
+> Keep the binary current (`clickup-axi update`, or agree when the update
+> notice appears). Feature requests are very welcome in the
 > [issues](https://github.com/JanSuthacheeva/clickup-axi/issues).
 
 > [!WARNING]
@@ -25,6 +26,32 @@ and comments, creating
 a task or subtask with its fields set in one call, editing
 its status, assignees, priority, due date, name, description, tags, or parent,
 commenting on it, and discovering the spaces and Lists to target.
+
+## Benchmark
+
+clickup-axi was evaluated head-to-head against the official ClickUp MCP server on
+38 grading-fair task-management tasks, driven by two Claude models (Haiku 4.5 and
+Sonnet 5, five repetitions each) plus a single-repetition Opus 4.8 probe, against
+the same live workspace. The only variable is how the tools reach the agent: a
+compact CLI discovered on demand (axi) versus ~52 MCP tool schemas kept resident
+in context.
+
+Headline results (full write-up, figures, and raw per-run data in
+[clickup-ai-benchmark](https://github.com/JanSuthacheeva/clickup-ai-benchmark)):
+
+- **Task success is a statistical tie** on both models. Neither bridge holds a
+  significant edge - axi leads nominally on the weak model, MCP on the strong one,
+  and every confidence interval includes zero.
+- **~3x smaller tool surface** on both models, because the schemas stay off the
+  context window until a ClickUp turn actually needs them.
+- **2.3-3.3x cheaper per task**, and the gap widens on mixed workloads - up to
+  ~13x per request when only a small share of calls touch ClickUp, since the MCP
+  surface is resident on every request while axi's is disclosed on demand.
+
+The study is deliberately even-handed. It also reports the tasks where v1.0.0
+trails (search recall and content generation) and the capabilities the MCP server
+has that axi does not; those shortfalls are the
+[v1.1 backlog](https://github.com/JanSuthacheeva/clickup-axi/issues).
 
 ## Installation
 

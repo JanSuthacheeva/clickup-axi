@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 First stable release. Promotes the 1.0.0-rc line unchanged since
 1.0.0-rc.3; the command surface is complete and the package is
-considered stable. Benchmark results and a case study will follow.
+considered stable. Benchmarked head-to-head against the official
+ClickUp MCP server in the
+[clickup-ai-benchmark](https://github.com/JanSuthacheeva/clickup-ai-benchmark)
+benchmark study: a statistical tie on task success, with a ~3x smaller tool
+surface and 2.3-3.3x lower cost per task.
 
 ## [1.0.0-rc.3] - 2026-07-14
 
